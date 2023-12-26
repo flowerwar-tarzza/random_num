@@ -18,27 +18,25 @@ impl Memo {
     }
 
 }
-fn main() {
-    let mut read_file = match fs::read_to_string("look_again_test.csv") {
+fn make_book(path:&str) -> Vec<Memo> {
+    let read_file = match fs::read_to_string(path) {
         Ok(result) => result,
         Err(e) => panic!("{e}"),
     };
 
-    read_file.trim();
     let mut lines:Vec<&str> = read_file.split('\n').collect();
-    lines.pop(); // 마지막 \n 의 "" 남김 제거
     let mut memo_book : Vec<Memo> = Vec::new();
+    lines.pop(); // 마지막 \n 의 "" 남김 제거
 
 
-    println!("lines num: {}",lines.len());
     for (i,line) in lines.iter().enumerate() {
         if i < 1 { continue; } // 칼럼 명 라인 생략
-        println!("{},{}",i,line);
+
         let mut one_memo = Memo::build();
         let mut cols:Vec<_> = line.split('\t').collect();
         one_memo.word = String::from(cols.remove(0));
         one_memo.pornounce = String::from(cols.remove(0));
-        println!("row length: {}",cols.len());
+
         let mut flag_ex_sentence: bool = false;
         for col in cols {
             //println!("col size:{}//{}",col,col.len());
@@ -47,16 +45,20 @@ fn main() {
             } else {
                 flag_ex_sentence = true;
             }
-            if col.len() > 0 && flag_ex_sentence { // meaning add
+            if col.len() > 0 && flag_ex_sentence { // ex_sentence add
                 one_memo.ex_sentence.push(String::from(col));
             }
         }
-        memo_book.push(one_memo);
-
-        //println!("{:#?}]",one_memo);
-        //if i > 9 {break;}  // 4 개까지 만  출력위해
+        memo_book.push(one_memo)
     }
+    println!("const version test:{}",VERSION);
+    memo_book
+
+}
+const VERSION:usize = 1111;
+fn main() {
+    let book = make_book("look_again_test.csv");
     //memo_book display
-    println!("{:#?}",memo_book);
+    println!("{:#?}",book);
 
 }
