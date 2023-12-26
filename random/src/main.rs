@@ -8,7 +8,6 @@ struct Memo{
 }
 
 impl Memo {
-    //fn build(word:String,pornounce:String,meanings:Vec<String>,ex_sentence:Vec<String>) -> Memo {
     fn build() -> Memo {
         Memo{
             word : String::new(),
@@ -20,17 +19,21 @@ impl Memo {
 
 }
 fn main() {
-    let read_file = match fs::read_to_string("look_again_test.csv") {
+    let mut read_file = match fs::read_to_string("look_again_test.csv") {
         Ok(result) => result,
         Err(e) => panic!("{e}"),
     };
 
-    let lines:Vec<&str> = read_file.split('\n').collect();
+    read_file.trim();
+    let mut lines:Vec<&str> = read_file.split('\n').collect();
+    lines.pop(); // 마지막 \n 의 "" 남김 제거
+    let mut memo_book : Vec<Memo> = Vec::new();
 
+
+    println!("lines num: {}",lines.len());
     for (i,line) in lines.iter().enumerate() {
-        if i < 1 {
-            continue;
-        }
+        if i < 1 { continue; } // 칼럼 명 라인 생략
+        println!("{},{}",i,line);
         let mut one_memo = Memo::build();
         let mut cols:Vec<_> = line.split('\t').collect();
         one_memo.word = String::from(cols.remove(0));
@@ -48,8 +51,12 @@ fn main() {
                 one_memo.ex_sentence.push(String::from(col));
             }
         }
-        println!("{:#?}]",one_memo);
-        if i > 3 {break;}  // 4 개까지 만  출력위해
+        memo_book.push(one_memo);
+
+        //println!("{:#?}]",one_memo);
+        //if i > 9 {break;}  // 4 개까지 만  출력위해
     }
+    //memo_book display
+    println!("{:#?}",memo_book);
 
 }
