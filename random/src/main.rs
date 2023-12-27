@@ -1,4 +1,5 @@
 use std::fs;
+
 #[derive(Debug)]
 struct Memo{
     word:String,
@@ -6,7 +7,6 @@ struct Memo{
     meanings:Vec<String>,
     ex_sentence:Vec<String>,
 }
-
 impl Memo {
     fn build() -> Memo {
         Memo{
@@ -16,7 +16,52 @@ impl Memo {
             ex_sentence: Vec::new(),
             }
     }
+}
 
+// word manager
+// indexing, start to end
+// display method ,,각필드의 보여주기 선택
+//#[derive(Debug)]
+struct MemoManager{
+    book : Vec<Memo>,
+    index : usize,
+    total_memo: usize,
+}
+enum MemoDisplayMethod {
+    All,
+    StartAmount(usize,usize),// start, amount
+    OnlyOne(usize),
+}
+impl MemoManager {
+    fn build(book:Vec<Memo>) -> MemoManager{
+        MemoManager {
+            total_memo: book.len(),
+            book,
+            index : 0,
+        }
+    }
+
+    fn display_memo(&self,method:MemoDisplayMethod) {
+        let mut start:usize = 0;
+        let mut end:usize = 0;
+        match method {
+            MemoDisplayMethod::All => { start = 0; end = self.total_memo; },
+            MemoDisplayMethod::StartAmount(head,amount) => {
+                start = head - 1;
+                if self.total_memo < amount {
+                    end = start + amount - self.total_memo;
+                }else {
+                    end = start + amount;
+                }
+            },
+            _ => { println!("not implemented!") },
+        }
+
+        for i in start..end {
+            println!("{:#?}",self.book[i]);
+        }
+
+    }
 }
 fn make_book(path:&str) -> Vec<Memo> {
     let read_file = match fs::read_to_string(path) {
@@ -51,14 +96,15 @@ fn make_book(path:&str) -> Vec<Memo> {
         }
         memo_book.push(one_memo)
     }
-    println!("const version test:{}",VERSION);
     memo_book
-
 }
-const VERSION:usize = 1111;
+
 fn main() {
     let book = make_book("look_again_test.csv");
+    let memo_manager = MemoManager::build(book);
     //memo_book display
-    println!("{:#?}",book);
-
+    //println!("{:#?}",memo_manager);
+    //memo_manager.display_memo(MemoDisplayMethod::All);
+    println!("시작부터 : 볼 갯수");
+    memo_manager.display_memo(MemoDisplayMethod::StartAmount(1,11));
 }
