@@ -24,12 +24,11 @@ impl Memo {
 //#[derive(Debug)]
 struct MemoManager{
     book : Vec<Memo>,
-    index : usize,
     total_memo: usize,
 }
 enum MemoDisplayMethod {
     All,
-    StartAmount(usize,usize),// start, amount
+    Select(usize,usize),// start, amount
     OnlyOne(usize),
 }
 impl MemoManager {
@@ -37,7 +36,6 @@ impl MemoManager {
         MemoManager {
             total_memo: book.len(),
             book,
-            index : 0,
         }
     }
 
@@ -46,7 +44,7 @@ impl MemoManager {
         let mut end:usize = 0;
         match method {
             MemoDisplayMethod::All => { start = 0; end = self.total_memo; },
-            MemoDisplayMethod::StartAmount(head,amount) => {
+            MemoDisplayMethod::Select(head,amount) => {
                 start = head - 1;
                 if self.total_memo < amount {
                     end = start + amount - self.total_memo;
@@ -106,5 +104,5 @@ fn main() {
     //println!("{:#?}",memo_manager);
     //memo_manager.display_memo(MemoDisplayMethod::All);
     println!("시작부터 : 볼 갯수");
-    memo_manager.display_memo(MemoDisplayMethod::StartAmount(1,11));
+    memo_manager.display_memo(MemoDisplayMethod::Select(1,4));
 }
