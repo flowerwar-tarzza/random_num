@@ -1,5 +1,9 @@
+use std::fs;
+use std::{thread,time,process};
+
 pub mod memo {
-    use std::fs;
+    use super::*;
+
     #[derive(Debug)]
     pub struct Memo{
         word:String,
@@ -42,6 +46,8 @@ pub mod memo {
         pub fn display_memo(&self,method:MemoDisplayMethod) {
             let mut start:usize = 0;
             let mut end:usize = 0;
+            let mut delay_time = time::Duration::from_millis(2000);
+
             match method {
                 MemoDisplayMethod::All => { start = 0; end = self.total_memo; },
                 MemoDisplayMethod::Select(head,amount) => {
@@ -56,7 +62,16 @@ pub mod memo {
             }
 
             for i in start..end {
+                //print!("{esc}c",esc= 27 as char);
+                process::Command::new("clear").status().unwrap();
+
                 println!("{:#?}",self.book[i]);
+                println!("[{}/{}] ",i + 1,end - start);
+
+                if i == end - 1 {
+                    continue;
+                }
+                thread::sleep(delay_time);
             }
 
         }
