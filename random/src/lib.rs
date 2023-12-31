@@ -30,10 +30,15 @@ pub mod memo {
         book : Vec<Memo>,
         total_memo: usize,
     }
-    pub enum MemoDisplayMethod {
+    
+    pub enum MemoShowMethod {
+        WORD,
+        WORD_MEAN,
+        WORD_MEAN_EXAMPLE,
+    }
+    pub enum MemoShowRange {
         All,
         Select(usize,usize),// start, amount
-        OnlyOne(usize),
     }
     impl MemoManager {
         pub fn build(book:Vec<Memo>) -> MemoManager{
@@ -43,14 +48,14 @@ pub mod memo {
             }
         }
 
-        pub fn display_memo(&self,method:MemoDisplayMethod) {
+        pub fn display_memo(&self,range:MemoShowRange,method:MemoShowMethod) {
             let mut start:usize = 0;
             let mut end:usize = 0;
             let mut delay_time = time::Duration::from_millis(2000);
 
-            match method {
-                MemoDisplayMethod::All => { start = 0; end = self.total_memo; },
-                MemoDisplayMethod::Select(head,amount) => {
+            match range {
+                MemoShowRange::All => { start = 0; end = self.total_memo; },
+                MemoShowRange::Select(head,amount) => {
                     start = head - 1;
                     if self.total_memo < amount {
                         end = start + amount - self.total_memo;
@@ -61,12 +66,33 @@ pub mod memo {
                 _ => { println!("not implemented!") },
             }
 
+            // consol display ---
             for i in start..end {
-                //print!("{esc}c",esc= 27 as char);
-                process::Command::new("clear").status().unwrap();
+                //print!("{esc}c",esc= 27 as char);  //clear screen
+                process::Command::new("clear").status().unwrap();  //clear screen
 
-                println!("{:#?}",self.book[i]);
-                println!("[{}/{}] ",i + 1,end - start);
+                //make format string for output
+                let memo = &self.book[i];
+                let mut output = String::new();
+                match method {
+                    MemoShowMethod::WORD => {
+                        output_word(&mut output,&memo)
+                    },
+                    MemoShowMethod::WORD_MEAN => {
+                        output_word(&mut output,&memo);
+                        output_means(&mut output,&memo);
+                    },
+                    MemoShowMethod::WORD_MEAN_EXAMPLE => {
+                        output_word(&mut output,&memo);
+                        output_means(&mut output,&memo);
+                        output_examples(&mut output,&memo);
+
+                    },
+                }
+
+                // --- dislay  output
+                println!("{}",output);
+                println!("[{}/{}] ",i + 1 - start,end - start);
 
                 if i == end - 1 {
                     continue;
@@ -74,6 +100,19 @@ pub mod memo {
                 thread::sleep(delay_time);
             }
 
+        }
+    }
+    fn output_word(output:&mut String,memo:&Memo){
+        output.push_str(&format!("{} [{}]\n",memo.word,memo.pornounce));
+    }
+    fn output_means(output:&mut String,memo:&Memo) {
+        for e in &memo.meanings {
+            output.push_str(&format!("{}\n",e))
+        }
+    }
+    fn output_examples(output:&mut String,memo:&Memo) {
+        for e in &memo.ex_sentence{
+            output.push_str(&format!("{}\n",e))
         }
     }
     pub fn make_book(path:&str) -> Vec<Memo> {
