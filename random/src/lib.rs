@@ -108,7 +108,7 @@ pub mod memo {
             }
 
         }
-        pub fn display_memo_key_control(&self,range:MemoShowRange,method:MemoShowMethod) {
+        pub fn display_memo_key_control(&self,range:MemoShowRange,mut method:MemoShowMethod) {
             let mut start:usize = 0;
             let mut end:usize = 0;
             let mut cur_idx: usize = 0;
@@ -128,10 +128,23 @@ pub mod memo {
                 },
                 _ => { println!("not implemented!") },
             }
-            cur_idx = start;
             println!("{}{}",clear::All,cursor::Goto(1,1)); //clear screen , cursor go 1,1
 
+            let mut first_enter:bool = true;
             for c in stdin.keys() {
+                match c.unwrap() {
+                    Key::Char('n') => {
+                        if cur_idx < self.total_memo - 1 && !first_enter
+                        {cur_idx += 1}
+                        else {first_enter = false;}
+                    },
+                    Key::Char('p') => { if cur_idx > 0 {cur_idx -= 1}},
+                    Key::Char('w') => method = MemoShowMethod::Word,
+                    Key::Char('m') => method = MemoShowMethod::WordMean,
+                    Key::Char('e') => method = MemoShowMethod::WordMeanExample,
+                    Key::Char('q') => break,
+                    _ => println!("other key"),
+                }
                 let mut output = String::new();
                 let memo = &self.book[cur_idx];
 
@@ -149,13 +162,11 @@ pub mod memo {
                         output_examples(&mut output,&memo);
                     },
                 }
-                println!("{}",output);
-                println!("N for Next,q for Quit");
-                match c.unwrap() {
-                    Key::Char('n') => cur_idx += 1,
-                    Key::Char('q') => break,
-                    _ => println!("other key: n"),
-                }
+                write!(stdout,"{}",clear::All); stdout.flush().unwrap();
+                write!(stdout,"{}\n\r",output);
+                write!(stdout,"[{}]\n\r",cur_idx);
+                write!(stdout,"[N]Next,[q]Quit[w][m][e]\n\r");
+                write!(stdout,"{}",cursor::Goto(1,1)); stdout.flush().unwrap();
             }
         }
     }
