@@ -109,8 +109,7 @@ pub mod memo {
 
         }
         pub fn display_memo_key_control(&self,range:MemoShowRange,mut method:MemoShowMethod) {
-            let mut start:usize = 0;
-            let mut end:usize = 0;
+            let mut start:usize = 0; let mut end:usize = 0;
             let mut cur_idx: usize = 0;
 
             let stdin = stdin();
