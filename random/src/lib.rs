@@ -1,5 +1,4 @@
 use std::fs;
-//use std::{thread,time,process};
 use std::{thread,time};
 use std::io::{Write,stdin,stdout};
 use termion::{clear,cursor};
@@ -67,116 +66,78 @@ pub mod memo {
             temp
         }
 
-        pub fn display_memo(&self,range:MemoShowRange) {
-            let mut start:usize = 0;
-            let mut end:usize = 0;
-            let mut delay_time = time::Duration::from_millis(2000);
-
-            //set up range : start , end,
-            match range {
-                MemoShowRange::All => { start = 0; end = self.total_memo; },
-                MemoShowRange::Select(head,amount) => {
-                    start = head - 1;
-                    if self.total_memo < amount {
-                        end = start + amount - self.total_memo;
-                    }else {
-                        end = start + amount;
-                    }
-                },
-                _ => { println!("not implemented!") },
-            }
-
-            // consol display ---
-            for i in start..end {
-                let memo = &self.book[i];
-                let mut output = String::new();
-                //print!("{esc}c",esc= 27 as char);  //clear screen
-                //process::Command::new("clear").status().unwrap();  //clear screen
-                println!("{}{}",clear::All,cursor::Goto(1,1)); //clear screen , cursor go 1,1
-                                                               //
-                //make format string for output
-                match self.memo_show_method {
-                    MemoShowMethod::Word=> {
-                        output_word(&mut output,&memo)
-                    },
-                    MemoShowMethod::WordMean => {
-                        output_word(&mut output,&memo);
-                        output_means(&mut output,&memo);
-                    },
-                    MemoShowMethod::WordMeanExample => {
-                        output_word(&mut output,&memo);
-                        output_means(&mut output,&memo);
-                        output_examples(&mut output,&memo);
-
-                    },
-                }
-
-                // --- dislay  output
-                println!("{}",output);
-                println!("[{}/{}] ",i + 1 - start,end - start);
-                if i == end - 1 {
-                    continue;
-                }
-                thread::sleep(delay_time);
-            }
-
-        }
-        pub fn display_memo_key_control(&mut self,range:MemoShowRange) {
-            let mut start:usize = 0;
-            let mut end:usize = 0;
+        pub fn display_memo_key_control(&mut self) {
             let mut cur_idx: usize = 0;
+            let bottom_message = "[N]Next,[p]previous,[w][m][e]toggle,Range[r][q]Quit\n\r";
+            let mut is_set_range:bool = false; // range key input :stdin borrow error
+                                               // for c in stdin.keys() 내에 사용불가
+                                               // :우회방법 으로 outer loop 사용
 
-            let stdin = stdin();
             let mut stdout = stdout().into_raw_mode().unwrap();
-            //set up range : start , end,
-            match range {
-                MemoShowRange::All => { start = 0; end = self.total_memo; },
-                MemoShowRange::Select(head,amount) => {
-                    start = head - 1;
-                    if self.total_memo < amount {
-                        end = start + amount - self.total_memo;
-                    }else {
-                        end = start + amount;
-                    }
-                },
-                _ => { println!("not implemented!") },
-            }
-            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)); //clear screen , cursor go 1,1
             write!(stdout,"{}\n\r","press any to start!"); stdout.flush().unwrap();
-            let mut first_enter:bool = true;
-            for c in stdin.keys() {
-                match c.unwrap() {
-                    Key::Char('n') => {
-                        if cur_idx < self.total_memo - 1 && !first_enter
-                        {cur_idx += 1}
-                        else {first_enter = false;}
-                    },
-                    Key::Char('p') => { if cur_idx > 0 {cur_idx -= 1}},
-                    Key::Char('w') => self.switch_word = !self.switch_word,
-                    Key::Char('m') => self.switch_mean = !self.switch_mean,
-                    Key::Char('e') => self.switch_example = !self.switch_example,
-                    Key::Char('q') => break,
-                    _ => println!("other key"),
+            'outter: loop {
+                let mut stdin = stdin();
+                let mut first_enter:bool = true; // 첫 출력시 cur_idx 증가 방지
+                if is_set_range {
+                    write!(stdout,"{}",clear::All); stdout.flush().unwrap();
+                    write!(stdout,"{}{}\n\r","range set(start,end)",cursor::Show);
+                    stdout.flush().unwrap();
+                    stdout.suspend_raw_mode();
+                    let mut input = TermRead::read_line(&mut stdin).unwrap().unwrap();
+                    stdout.activate_raw_mode();
+                    write!(stdout,"your input :{}\n\r",input); stdout.flush().unwrap();
+
+                }
+                // ==== key input
+                for c in stdin.keys() {
+                    match c.unwrap() {
+                        Key::Char('n') => {
+                            if cur_idx < self.total_memo - 1 && !first_enter
+                            {cur_idx += 1}
+                            else {first_enter = false;}
+                        },
+                        Key::Char('p') => { if cur_idx > 0 {cur_idx -= 1}},
+                        Key::Char('q') => {
+                            write!(stdout,"{}",clear::All); stdout.flush().unwrap();
+                            break 'outter
+                        },
+                        Key::Char('w') => self.switch_word = !self.switch_word,
+                        Key::Char('m') => self.switch_mean = !self.switch_mean,
+                        Key::Char('e') => self.switch_example = !self.switch_example,
+                        Key::Char('r') => {
+                            is_set_range = true;
+                            break;
+                        },
+                        _ => {
+                            write!(stdout,"your input : other key\n\r");
+                            stdout.flush().unwrap();
+                            continue;
+                        },
+                    }
+
+                    //make output ----
+                    let mut output = String::new();
+                    let memo = &self.book[cur_idx];
+                    if self.switch_word{
+                        output_word(&mut output,&memo);
+                    }
+                    if self.switch_mean{
+                        output_means(&mut output,&memo);
+                    }
+                    if self.switch_example{
+                        output_examples(&mut output,&memo);
+                    }
+                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)); stdout.flush().unwrap();
+                    write!(stdout,"{}\n\r",output);
+                    write!(stdout,"[{}]\n\r",cur_idx);
+                    write!(stdout,"{}",bottom_message);
+                    stdout.flush().unwrap();
                 }
 
-
-                let mut output = String::new();
-                let memo = &self.book[cur_idx];
-                if self.switch_word{
-                    output_word(&mut output,&memo);
-                }
-                if self.switch_mean{
-                    output_means(&mut output,&memo);
-                }
-                if self.switch_example{
-                    output_examples(&mut output,&memo);
-                }
-                write!(stdout,"{}",clear::All); stdout.flush().unwrap();
-                write!(stdout,"{}\n\r",output);
-                write!(stdout,"[{}]\n\r",cur_idx);
-                write!(stdout,"[N]Next,[q]Quit[w][m][e]\n\r");
-                write!(stdout,"{}",cursor::Goto(1,1)); stdout.flush().unwrap();
             }
+        }
+        fn set_indexs(&self) {
+            println!("not implements");
         }
     }
     fn output_word(output:&mut String,memo:&Memo){
