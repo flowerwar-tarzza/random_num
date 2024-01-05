@@ -45,15 +45,26 @@ pub mod memo {
     pub struct MemoManager{
         book : Vec<Memo>,
         total_memo: usize,
+        i_start: usize,
+        i_end: usize,
         memo_show_method: MemoShowMethod,
+        switch_word:bool,
+        switch_mean:bool,
+        switch_example:bool,
     }
     impl MemoManager {
         pub fn build(book:Vec<Memo>,method:MemoShowMethod) -> MemoManager{
-            MemoManager {
+            let temp = MemoManager {
                 total_memo: book.len(),
+                i_start: 0,
+                i_end: book.len() - 1,
                 book,
                 memo_show_method:method,
-            }
+                switch_word:true,
+                switch_mean:true,
+                switch_example:true,
+            };
+            temp
         }
 
         pub fn display_memo(&self,range:MemoShowRange) {
@@ -111,7 +122,8 @@ pub mod memo {
 
         }
         pub fn display_memo_key_control(&mut self,range:MemoShowRange) {
-            let mut start:usize = 0; let mut end:usize = 0;
+            let mut start:usize = 0;
+            let mut end:usize = 0;
             let mut cur_idx: usize = 0;
 
             let stdin = stdin();
@@ -140,28 +152,24 @@ pub mod memo {
                         else {first_enter = false;}
                     },
                     Key::Char('p') => { if cur_idx > 0 {cur_idx -= 1}},
-                    Key::Char('w') => self.memo_show_method = MemoShowMethod::Word,
-                    Key::Char('m') => self.memo_show_method = MemoShowMethod::WordMean,
-                    Key::Char('e') => self.memo_show_method = MemoShowMethod::WordMeanExample,
+                    Key::Char('w') => self.switch_word = !self.switch_word,
+                    Key::Char('m') => self.switch_mean = !self.switch_mean,
+                    Key::Char('e') => self.switch_example = !self.switch_example,
                     Key::Char('q') => break,
                     _ => println!("other key"),
                 }
+
+
                 let mut output = String::new();
                 let memo = &self.book[cur_idx];
-
-                match self.memo_show_method {
-                    MemoShowMethod::Word=> {
-                        output_word(&mut output,&memo)
-                    },
-                    MemoShowMethod::WordMean => {
-                        output_word(&mut output,&memo);
-                        output_means(&mut output,&memo);
-                    },
-                    MemoShowMethod::WordMeanExample => {
-                        output_word(&mut output,&memo);
-                        output_means(&mut output,&memo);
-                        output_examples(&mut output,&memo);
-                    },
+                if self.switch_word{
+                    output_word(&mut output,&memo);
+                }
+                if self.switch_mean{
+                    output_means(&mut output,&memo);
+                }
+                if self.switch_example{
+                    output_examples(&mut output,&memo);
                 }
                 write!(stdout,"{}",clear::All); stdout.flush().unwrap();
                 write!(stdout,"{}\n\r",output);
