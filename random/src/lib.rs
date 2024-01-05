@@ -28,15 +28,6 @@ pub mod memo {
                 }
         }
     }
-
-    // word manager
-    // indexing, start to end
-    // display method ,,각필드의 보여주기 선택
-    //#[derive(Debug)]
-    pub struct MemoManager{
-        book : Vec<Memo>,
-        total_memo: usize,
-    }
     pub enum MemoShowMethod {
         Word,
         WordMean,
@@ -46,15 +37,26 @@ pub mod memo {
         All,
         Select(usize,usize),// start, amount
     }
+
+    // word manager
+    // indexing, start to end
+    // display method ,,각필드의 보여주기 선택
+    //#[derive(Debug)]
+    pub struct MemoManager{
+        book : Vec<Memo>,
+        total_memo: usize,
+        memo_show_method: MemoShowMethod,
+    }
     impl MemoManager {
-        pub fn build(book:Vec<Memo>) -> MemoManager{
+        pub fn build(book:Vec<Memo>,method:MemoShowMethod) -> MemoManager{
             MemoManager {
                 total_memo: book.len(),
                 book,
+                memo_show_method:method,
             }
         }
 
-        pub fn display_memo(&self,range:MemoShowRange,method:MemoShowMethod) {
+        pub fn display_memo(&self,range:MemoShowRange) {
             let mut start:usize = 0;
             let mut end:usize = 0;
             let mut delay_time = time::Duration::from_millis(2000);
@@ -82,7 +84,7 @@ pub mod memo {
                 println!("{}{}",clear::All,cursor::Goto(1,1)); //clear screen , cursor go 1,1
                                                                //
                 //make format string for output
-                match method {
+                match self.memo_show_method {
                     MemoShowMethod::Word=> {
                         output_word(&mut output,&memo)
                     },
@@ -108,7 +110,7 @@ pub mod memo {
             }
 
         }
-        pub fn display_memo_key_control(&self,range:MemoShowRange,mut method:MemoShowMethod) {
+        pub fn display_memo_key_control(&mut self,range:MemoShowRange) {
             let mut start:usize = 0; let mut end:usize = 0;
             let mut cur_idx: usize = 0;
 
@@ -127,8 +129,8 @@ pub mod memo {
                 },
                 _ => { println!("not implemented!") },
             }
-            println!("{}{}",clear::All,cursor::Goto(1,1)); //clear screen , cursor go 1,1
-
+            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)); //clear screen , cursor go 1,1
+            write!(stdout,"{}\n\r","press any to start!"); stdout.flush().unwrap();
             let mut first_enter:bool = true;
             for c in stdin.keys() {
                 match c.unwrap() {
@@ -138,16 +140,16 @@ pub mod memo {
                         else {first_enter = false;}
                     },
                     Key::Char('p') => { if cur_idx > 0 {cur_idx -= 1}},
-                    Key::Char('w') => method = MemoShowMethod::Word,
-                    Key::Char('m') => method = MemoShowMethod::WordMean,
-                    Key::Char('e') => method = MemoShowMethod::WordMeanExample,
+                    Key::Char('w') => self.memo_show_method = MemoShowMethod::Word,
+                    Key::Char('m') => self.memo_show_method = MemoShowMethod::WordMean,
+                    Key::Char('e') => self.memo_show_method = MemoShowMethod::WordMeanExample,
                     Key::Char('q') => break,
                     _ => println!("other key"),
                 }
                 let mut output = String::new();
                 let memo = &self.book[cur_idx];
 
-                match method {
+                match self.memo_show_method {
                     MemoShowMethod::Word=> {
                         output_word(&mut output,&memo)
                     },

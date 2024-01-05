@@ -39,10 +39,10 @@ fn main() {
     }
 
     let book = make_book(&file_name);
-    let memo_manager = MemoManager::build(book);
+    let mut memo_manager = MemoManager::build(book,method);
 
     println!("시작부터 : 볼 갯수");
-    memo_manager.display_memo_key_control(MemoShowRange::Select(start,amount),method);
+    memo_manager.display_memo_key_control(MemoShowRange::Select(start,amount));
     //memo_manager.display_memo(MemoShowRange::Select(start,amount),method);
     //memo_manager.display_memo(MemoShowRange::All);
 }
