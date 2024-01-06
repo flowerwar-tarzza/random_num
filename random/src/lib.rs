@@ -1,6 +1,8 @@
 use std::fs;
-use std::io::{Write,stdin,stdout};
-use termion::{clear,cursor};
+use std::thread;
+use std::time::Duration;
+use std::io::{Write,stdin,stdout,Read};
+use termion::{clear,cursor,async_stdin};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
@@ -143,6 +145,25 @@ pub mod memo {
                     stdout.flush().unwrap();
                 }
 
+            }
+        }
+        pub fn display_memo_async_stdin(&self) {
+            let mut in_buff = async_stdin().bytes();
+            let mut stdout = stdout().lock().into_raw_mode().unwrap();
+
+            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+            stdout.flush().unwrap();
+
+            loop {
+                let read = in_buff.next();
+
+                if let Some(Ok(b'q')) = read {
+                    break;
+                }
+
+                thread::sleep(Duration::from_millis(100));
+                write!(stdout,"{}{}test async stdio \n\r",clear::All,cursor::Goto(1,1)).unwrap();
+                stdout.flush().unwrap();
             }
         }
         fn set_indexs(&mut self,input:String) {

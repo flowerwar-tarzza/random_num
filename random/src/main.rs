@@ -12,5 +12,6 @@ fn main() {
     let mut memo_manager = MemoManager::build(book);
 
     println!("시작부터 : 볼 갯수");
-    memo_manager.display_memo_key_control();
+    //memo_manager.display_memo_key_control();
+    memo_manager.display_memo_async_stdin();
 }
