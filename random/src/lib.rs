@@ -28,10 +28,6 @@ pub mod memo {
                 }
         }
     }
-    //pub enum MemoShowRange {
-        //All,
-        //Select(usize,usize),// start, amount
-    //}
 
     // word manager
     // indexing, start to end
@@ -113,6 +109,7 @@ pub mod memo {
                         Key::Char('w') => self.switch_word = !self.switch_word,
                         Key::Char('m') => self.switch_mean = !self.switch_mean,
                         Key::Char('e') => self.switch_example = !self.switch_example,
+                        Key::Char('a') => self.display_memo_async_stdin() ,
                         Key::Char('r') => {
                             is_range_page = true;
                             break;
@@ -147,23 +144,40 @@ pub mod memo {
 
             }
         }
-        pub fn display_memo_async_stdin(&self) {
+        fn display_memo_async_stdin(&mut self) {
             let mut in_buff = async_stdin().bytes();
             let mut stdout = stdout().lock().into_raw_mode().unwrap();
 
             write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
             stdout.flush().unwrap();
 
+            let buttom_message = "Exit Auto Mode : q";
             loop {
+                // key input check
                 let read = in_buff.next();
-
                 if let Some(Ok(b'q')) = read {
                     break;
                 }
-
-                thread::sleep(Duration::from_millis(100));
-                write!(stdout,"{}{}test async stdio \n\r",clear::All,cursor::Goto(1,1)).unwrap();
+                // make output
+                let mut output = String::new();
+                let memo = &self.book[self.i_current];
+                if self.switch_word{
+                    output_word(&mut output,&memo);
+                }
+                if self.switch_mean{
+                    output_means(&mut output,&memo);
+                }
+                if self.switch_example{
+                    output_examples(&mut output,&memo);
+                }
+                thread::sleep(Duration::from_millis(1000));
+                write!(stdout,"{}{}auto next\n\r",clear::All,cursor::Goto(1,1)).unwrap();
+                write!(stdout,"{}\n\r",output).unwrap();
                 stdout.flush().unwrap();
+                if self.i_current < self.i_end { self.i_current += 1; }
+                else {
+                    write!(stdout,"reach end \n\r").unwrap();
+                }
             }
         }
         fn set_indexs(&mut self,input:String) {
