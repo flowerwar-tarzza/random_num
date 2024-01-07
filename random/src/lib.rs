@@ -151,12 +151,30 @@ pub mod memo {
             write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
             stdout.flush().unwrap();
 
-            let buttom_message = "Exit Auto Mode : q";
+            let buttom_message = "Exit Auto Mode : [q] / toggle switch : [w,m,e]/ replay :[r] ";
             loop {
                 // key input check
+                //let read = in_buff.next();
+                //if let Some(Ok(b'q')) = read {
+                    //break;
+                //}
+
                 let read = in_buff.next();
-                if let Some(Ok(b'q')) = read {
-                    break;
+                let mut key = b'_';
+                match read {
+                    Some(val) => {key = val.unwrap();},
+                    None => {},
+                }
+                //write!(stdout,"{}\n\r",read).unwrap();
+                //stdout.flush().unwrap();
+                
+                match key {
+                    b'q' => break,
+                    b'w' => { self.switch_word = !self.switch_word},
+                    b'm' => { self.switch_mean= !self.switch_mean},
+                    b'e' => { self.switch_example = !self.switch_example},
+                    b'r' => { self.i_current = self.i_start },
+                    _ => {},
                 }
                 // make output
                 let mut output = String::new();
@@ -171,9 +189,12 @@ pub mod memo {
                     output_examples(&mut output,&memo);
                 }
                 thread::sleep(Duration::from_millis(1000));
-                write!(stdout,"{}{}auto next\n\r",clear::All,cursor::Goto(1,1)).unwrap();
+                write!(stdout,"{}{}\n\r",clear::All,cursor::Goto(1,1)).unwrap();
                 write!(stdout,"{}\n\r",output).unwrap();
+                write!(stdout,"{}\n\r",buttom_message).unwrap();
                 stdout.flush().unwrap();
+
+                // index for next word 
                 if self.i_current < self.i_end { self.i_current += 1; }
                 else {
                     write!(stdout,"reach end \n\r").unwrap();
