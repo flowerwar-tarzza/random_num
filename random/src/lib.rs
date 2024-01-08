@@ -1,5 +1,4 @@
-use std::fs;
-use std::thread;
+use std::{fs,thread};
 use std::time::Duration;
 use std::io::{Write,stdin,stdout,Read};
 use termion::{clear,cursor,async_stdin};
@@ -58,7 +57,7 @@ pub mod memo {
             temp
         }
 
-        pub fn display_memo_key_control(&mut self) {
+        pub fn display_memo_manual(&mut self) {
             self.i_current = self.i_start;
             let bottom_message = "[N]Next,[p]previous,[w][m][e]toggle,Range[r][q]Quit\n\r";
             let mut is_range_page:bool = false; // range key input :stdin borrow error
@@ -71,14 +70,13 @@ pub mod memo {
             'outter: loop {
                 let mut stdin = stdin();
                 let mut first_enter:bool = true; // 첫 출력시 self.i_current 증가 방지
-                if is_range_page {
+                if is_range_page {  // 범위 지정을 위한 화면과 라인 읽기
                     write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                    //stdout.flush().unwrap();
                     write!(stdout,"{}{}\n\r",
                            format!("range set({},{})",0,self.total_memo - 1),
                            cursor::Show).unwrap();
                     stdout.flush().unwrap();
-                    let _ = stdout.suspend_raw_mode();
+                    let _ = stdout.suspend_raw_mode(); // stdout : show  key input
                     let input = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
                     write!(stdout,"your input :{}\n\r",input).unwrap();
@@ -109,7 +107,7 @@ pub mod memo {
                         Key::Char('w') => self.switch_word = !self.switch_word,
                         Key::Char('m') => self.switch_mean = !self.switch_mean,
                         Key::Char('e') => self.switch_example = !self.switch_example,
-                        Key::Char('a') => self.display_memo_async_stdin() ,
+                        Key::Char('a') => self.display_memo_auto_mode() ,
                         Key::Char('r') => {
                             is_range_page = true;
                             break;
@@ -133,8 +131,8 @@ pub mod memo {
                     if self.switch_example{
                         output_examples(&mut output,&memo);
                     }
+                    self.edit_output_for_test(&mut output);
                     write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                    //stdout.flush().unwrap();
                     write!(stdout,"{}\n\r",output).unwrap();
                     write!(stdout,"[{}]\n\r",self.i_current).unwrap();
                     write!(stdout,"{}range({},{})",
@@ -144,7 +142,7 @@ pub mod memo {
 
             }
         }
-        fn display_memo_async_stdin(&mut self) {
+        fn display_memo_auto_mode(&mut self) {
             let mut in_buff = async_stdin().bytes();
             let mut stdout = stdout().lock().into_raw_mode().unwrap();
 
@@ -201,7 +199,7 @@ pub mod memo {
                 }
             }
         }
-        fn set_indexs(&mut self,input:String) {
+        fn set_indexs(&mut self,input:String) { // set index range (start, end)
             let v_inputs:Vec<_> = input.trim().split(',').collect();
             self.i_start = v_inputs[0].parse::<usize>().unwrap();
             self.i_end = v_inputs[1].parse::<usize>().unwrap();
@@ -209,6 +207,21 @@ pub mod memo {
             //validate input to iszie
             if self.i_end > self.total_memo - 1 {
                 self.i_end %= self.total_memo;
+            }
+        }
+        fn edit_output_for_test(&mut self,output:&mut String) {
+            // 시험모드 : 사용자 입력 대기, word / mean 가림
+            // example 에서 word 가림,
+            let memo = &self.book[self.i_current];
+            while output.contains(&memo.word) {
+                let result= output.find(&memo.word);
+                let start = match result {
+                    Some(val) => val,
+                    None => return,
+                };
+                let end = memo.word.len() + start;
+                println!("start: {},end :{}",start,end);
+                output.replace_range(start..end ,"<?>");
             }
         }
     }
