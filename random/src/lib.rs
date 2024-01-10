@@ -27,6 +27,11 @@ pub mod memo {
                 }
         }
     }
+    enum DisplayMode{
+        TestWord, // word test: show Mean(conceiled word,example)
+        TestMean, // mean test: show Word,example(conceiled mean)
+        ShowAll,
+    }
 
     // word manager
     // indexing, start to end
@@ -41,6 +46,7 @@ pub mod memo {
         switch_word:bool,
         switch_mean:bool,
         switch_example:bool,
+        display_mode:DisplayMode,
     }
     impl MemoManager {
         pub fn build(book:Vec<Memo>) -> MemoManager{
@@ -53,6 +59,7 @@ pub mod memo {
                 switch_word:true,
                 switch_mean:true,
                 switch_example:true,
+                display_mode:DisplayMode::ShowAll,
             };
             temp
         }
@@ -107,7 +114,10 @@ pub mod memo {
                         Key::Char('w') => self.switch_word = !self.switch_word,
                         Key::Char('m') => self.switch_mean = !self.switch_mean,
                         Key::Char('e') => self.switch_example = !self.switch_example,
-                        Key::Char('a') => self.display_memo_auto_mode() ,
+                        Key::Char('a') => self.display_memo_auto_mode() , //auto mode
+                        Key::Char('t') => {
+                            self.display_mode = DisplayMode::TestWord;
+                            self.display_memo_test_mode(); }, //test mode
                         Key::Char('r') => {
                             is_range_page = true;
                             break;
@@ -123,15 +133,14 @@ pub mod memo {
                     let mut output = String::new();
                     let memo = &self.book[self.i_current];
                     if self.switch_word{
-                        output_word(&mut output,&memo);
+                        self.output_word(&mut output,&memo);
                     }
                     if self.switch_mean{
-                        output_means(&mut output,&memo);
+                        self.output_means(&mut output,&memo);
                     }
                     if self.switch_example{
-                        output_examples(&mut output,&memo);
+                        self.output_examples(&mut output,&memo);
                     }
-                    self.edit_output_for_test(&mut output);
                     write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
                     write!(stdout,"{}\n\r",output).unwrap();
                     write!(stdout,"[{}]\n\r",self.i_current).unwrap();
@@ -165,7 +174,6 @@ pub mod memo {
                 }
                 //write!(stdout,"{}\n\r",read).unwrap();
                 //stdout.flush().unwrap();
-                
                 match key {
                     b'q' => break,
                     b'w' => { self.switch_word = !self.switch_word},
@@ -178,13 +186,13 @@ pub mod memo {
                 let mut output = String::new();
                 let memo = &self.book[self.i_current];
                 if self.switch_word{
-                    output_word(&mut output,&memo);
+                    self.output_word(&mut output,&memo);
                 }
                 if self.switch_mean{
-                    output_means(&mut output,&memo);
+                    self.output_means(&mut output,&memo);
                 }
                 if self.switch_example{
-                    output_examples(&mut output,&memo);
+                    self.output_examples(&mut output,&memo);
                 }
                 thread::sleep(Duration::from_millis(1000));
                 write!(stdout,"{}{}\n\r",clear::All,cursor::Goto(1,1)).unwrap();
@@ -192,7 +200,7 @@ pub mod memo {
                 write!(stdout,"{}\n\r",buttom_message).unwrap();
                 stdout.flush().unwrap();
 
-                // index for next word 
+                // index for next word
                 if self.i_current < self.i_end { self.i_current += 1; }
                 else {
                     write!(stdout,"reach end \n\r").unwrap();
@@ -209,10 +217,49 @@ pub mod memo {
                 self.i_end %= self.total_memo;
             }
         }
-        fn edit_output_for_test(&mut self,output:&mut String) {
-            // 시험모드 : 사용자 입력 대기, word / mean 가림
-            // example 에서 word 가림,
+        fn display_memo_test_mode(&mut self) {
+            let stdio = stdin();
+            let mut stdout = stdout().into_raw_mode().unwrap();
             let memo = &self.book[self.i_current];
+            let mut output = String::new();
+            let bottom_message = "[q]Quit,[r]:retry,[a]:giveup,[n]:next,[p]:previous\n\r";
+
+            //clear screen
+            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+            stdout.flush().unwrap();
+            // word test -> 출력:mean,expample 가림:word
+            // mean test -> 출력:word,example  가림:means
+                    //make output ----
+                    let mut output = String::new();
+                    let memo = &self.book[self.i_current];
+                    if self.switch_word{
+                        self.output_word(&mut output,&memo);
+                    }
+                    if self.switch_mean{
+                        self.output_means(&mut output,&memo);
+                    }
+                    if self.switch_example{
+                        self.output_examples(&mut output,&memo);
+                    }
+                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                    write!(stdout,"{}\n\r",output).unwrap();
+                    write!(stdout,"[{}]\n\r",self.i_current).unwrap();
+                    write!(stdout,"{}range({},{})",
+                        bottom_message,self.i_start,self.i_end).unwrap();
+                    stdout.flush().unwrap();
+
+        }
+        fn edit_output_for_test(&mut self,output:&mut String) {
+            // 시험모드
+            // word test -> 출력:mean,expample 가림:word
+            // mean test -> 출력:word,example  가림:means
+            let memo = &self.book[self.i_current];
+            let mut concealed_word = String::new();
+            for i in 0..memo.word.len() {
+                if i == 0 { concealed_word.push_str("<");}
+                concealed_word.push('?');
+                if i == memo.word.len()-1 { concealed_word.push_str(">");}
+            }
             while output.contains(&memo.word) {
                 let result= output.find(&memo.word);
                 let start = match result {
@@ -221,23 +268,70 @@ pub mod memo {
                 };
                 let end = memo.word.len() + start;
                 println!("start: {},end :{}",start,end);
-                output.replace_range(start..end ,"<?>");
+                output.replace_range(start..end ,&concealed_word);
+            }
+        }
+        fn output_word(&self,output:&mut String,memo:&Memo){
+            // test mode , display_mode,
+            // make output
+            match self.display_mode {
+                DisplayMode::TestWord => {
+                    let mut concealed_word = String::new();
+                    for _i in memo.word.chars() {
+                        concealed_word.push('_');
+                    }
+                    output.push_str(&format!("{}\n\r",concealed_word));
+                },
+                DisplayMode::TestMean => {
+                    output.push_str(&format!("{} \n\r",memo.word));
+                },
+                DisplayMode::ShowAll => {
+                    output.push_str(&format!("{} [{}]\n\r",memo.word,memo.pornounce));
+                },
+            }
+        }
+        fn output_means(&self,output:&mut String,memo:&Memo) {
+            match self.display_mode {
+                DisplayMode::TestWord => {
+                    for e in &memo.meanings {
+                        output.push_str(&format!("{}\n\r",e));
+                    }
+                },
+                DisplayMode::TestMean => {
+                    for _e in &memo.meanings {
+                        output.push_str(&format!("?_____\n\r"));
+                    }
+                },
+                DisplayMode::ShowAll => {
+                    for e in &memo.meanings {
+                        output.push_str(&format!("{}\n\r",e));
+                    }
+                },
+            }
+        }
+        fn output_examples(&self,output:&mut String,memo:&Memo) {
+            let concealed_word = String::from("?".repeat(memo.word.len()));
+            match self.display_mode {
+                DisplayMode::TestWord => {
+                    for e in &memo.ex_sentence{
+                        let concealed_example = e.replace(&memo.word,&concealed_word);
+                        output.push_str(&format!("{}\n\r",concealed_example));
+                    }
+                },
+                DisplayMode::TestMean => {
+                    for e in &memo.ex_sentence{
+                        output.push_str(&format!("{}\n\r",e))
+                    }
+                },
+                DisplayMode::ShowAll => {
+                    for e in &memo.ex_sentence{
+                        output.push_str(&format!("{}\n\r",e))
+                    }
+                },
             }
         }
     }
-    fn output_word(output:&mut String,memo:&Memo){
-        output.push_str(&format!("{} [{}]\n\r",memo.word,memo.pornounce));
-    }
-    fn output_means(output:&mut String,memo:&Memo) {
-        for e in &memo.meanings {
-            output.push_str(&format!("{}\n\r",e))
-        }
-    }
-    fn output_examples(output:&mut String,memo:&Memo) {
-        for e in &memo.ex_sentence{
-            output.push_str(&format!("{}\n\r",e))
-        }
-    }
+
     pub fn make_book(path:String) -> Vec<Memo> {
         let read_file = match fs::read_to_string(path) {
             Ok(result) => result,
@@ -282,10 +376,8 @@ mod tests {
 
     #[test]
     fn input_test() {
-        println!("input_test in tests module ");
-        let mut buffer = String::new();
-        let stdin = io::stdin();
-        stdin.read_line(&mut buffer).expect("read buffer error!");
-
+        let s = "\n Hello\tworld\t\n";
+        assert_eq!("Hello\tworld",s.trim());
+        assert_eq!("\n Hello\tworld\t\n",s);
     }
 }
