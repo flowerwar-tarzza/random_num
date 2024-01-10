@@ -4,7 +4,7 @@ use std::io::{Write,stdin,stdout,Read};
 use termion::{clear,cursor,async_stdin};
 use termion::event::Key;
 use termion::input::TermRead;
-use termion::raw::IntoRawMode;
+use termion::raw::{IntoRawMode};
 
 
 pub mod memo {
@@ -27,6 +27,7 @@ pub mod memo {
                 }
         }
     }
+    #[derive(PartialEq)]
     enum DisplayMode{
         TestWord, // word test: show Mean(conceiled word,example)
         TestMean, // mean test: show Word,example(conceiled mean)
@@ -217,18 +218,40 @@ pub mod memo {
                 self.i_end %= self.total_memo;
             }
         }
-        fn display_memo_test_mode(&mut self) {
-            let stdio = stdin();
+        pub fn display_memo_test_mode(&mut self) {
             let mut stdout = stdout().into_raw_mode().unwrap();
-            let memo = &self.book[self.i_current];
-            let mut output = String::new();
-            let bottom_message = "[q]Quit,[r]:retry,[a]:giveup,[n]:next,[p]:previous\n\r";
+            let bottom_message = "[q]Quit,[r]:retry,[a]:giveup,\
+                                  [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\\n\r";
 
-            //clear screen
-            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-            stdout.flush().unwrap();
-            // word test -> 출력:mean,expample 가림:word
-            // mean test -> 출력:word,example  가림:means
+            //key event
+            'outter: loop {
+                let stdin = stdin();
+                write!(stdout,"{}{} keys --clear",clear::All,cursor::Goto(1,1)).unwrap();
+                stdout.flush().unwrap();
+                for c in stdin.keys() {
+                    match c.unwrap() {
+                        Key::Char('q') => {
+                            self.display_mode = DisplayMode::ShowAll;
+                            break 'outter;
+                        },
+                        Key::Char('n') => {
+                            if self.i_current < self.i_end {self.i_current += 1;}
+                        },
+                        Key::Char('p') => {
+                            if self.i_start < self.i_current {self.i_current -= 1;}
+                        },
+                        Key::Char('m') => {
+                            if self.display_mode != DisplayMode::TestMean {
+                                self.display_mode = DisplayMode::TestMean;
+                            }
+                        },
+                        Key::Char('w') => {
+                            if self.display_mode != DisplayMode::TestWord{
+                                self.display_mode = DisplayMode::TestWord;
+                            }
+                        },
+                        _ => {continue;},
+                    }
                     //make output ----
                     let mut output = String::new();
                     let memo = &self.book[self.i_current];
@@ -242,12 +265,14 @@ pub mod memo {
                         self.output_examples(&mut output,&memo);
                     }
                     write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                    stdout.flush().unwrap();
                     write!(stdout,"{}\n\r",output).unwrap();
                     write!(stdout,"[{}]\n\r",self.i_current).unwrap();
                     write!(stdout,"{}range({},{})",
                         bottom_message,self.i_start,self.i_end).unwrap();
                     stdout.flush().unwrap();
-
+                    }
+            }
         }
         fn edit_output_for_test(&mut self,output:&mut String) {
             // 시험모드

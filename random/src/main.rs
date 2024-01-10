@@ -15,5 +15,6 @@ fn main() {
     let book = make_book(file_name);
     let mut memo_manager = MemoManager::build(book);
 
+    //memo_manager.display_memo_test_mode();
     memo_manager.display_memo_manual();
 }
