@@ -1,6 +1,6 @@
 use std::{fs,thread};
 use std::time::Duration;
-use std::io::{Write,stdin,stdout,Read};
+use std::io::{self,Write,stdin,stdout,Read};
 use termion::{clear,cursor,async_stdin};
 use termion::event::Key;
 use termion::input::TermRead;
@@ -72,7 +72,7 @@ pub mod memo {
                                                // for c in stdin.keys() 내에 사용불가
                                                // :우회방법 으로 outer loop 사용
 
-            let mut stdout = stdout().into_raw_mode().unwrap();
+            let mut stdout = io::stdout().into_raw_mode().unwrap();
             write!(stdout,"{}\n\r","press any to start!").unwrap();
             stdout.flush().unwrap();
             'outter: loop {
@@ -118,7 +118,10 @@ pub mod memo {
                         Key::Char('a') => self.display_memo_auto_mode() , //auto mode
                         Key::Char('t') => {
                             self.display_mode = DisplayMode::TestWord;
-                            self.display_memo_test_mode(); }, //test mode
+                            stdout.suspend_raw_mode();
+                            self.display_memo_test_mode();
+                            stdout.activate_raw_mode();
+                        }, //test mode
                         Key::Char('r') => {
                             is_range_page = true;
                             break;
@@ -220,14 +223,32 @@ pub mod memo {
         }
         pub fn display_memo_test_mode(&mut self) {
             let mut stdout = stdout().into_raw_mode().unwrap();
-            let bottom_message = "[q]Quit,[r]:retry,[a]:giveup,\
-                                  [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\\n\r";
+            let bottom_message = "[q]Quit,[r]:retry,[a]:answer,\n\r\
+                                  [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\n\r";
+            let mut can_input = false;
+
 
             //key event
             'outter: loop {
-                let stdin = stdin();
-                write!(stdout,"{}{} keys --clear",clear::All,cursor::Goto(1,1)).unwrap();
-                stdout.flush().unwrap();
+                let mut stdin = stdin();
+                //write!(stdout,"{}{} keys --clear",clear::All,cursor::Goto(1,1)).unwrap();
+                //stdout.flush().unwrap();
+                if can_input {
+                    can_input = false;
+                    write!(stdout,"\n\ranwser me\n\r").unwrap();
+                    stdout.flush().unwrap();
+
+                    let _ = stdout.suspend_raw_mode();
+                    let input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
+                    let _ = stdout.activate_raw_mode();
+                    if input_string.contains(&self.book[self.i_current].word) {
+                        write!(stdout,"\n\rcorrect !").unwrap();
+                        stdout.flush().unwrap();
+                    }else {
+                        write!(stdout,"\n\rincorrect").unwrap();
+                        stdout.flush().unwrap();
+                    }
+                }
                 for c in stdin.keys() {
                     match c.unwrap() {
                         Key::Char('q') => {
@@ -236,6 +257,10 @@ pub mod memo {
                         },
                         Key::Char('n') => {
                             if self.i_current < self.i_end {self.i_current += 1;}
+                        },
+                        Key::Char('a') => {
+                            can_input = true;
+                            break;
                         },
                         Key::Char('p') => {
                             if self.i_start < self.i_current {self.i_current -= 1;}
@@ -271,29 +296,82 @@ pub mod memo {
                     write!(stdout,"{}range({},{})",
                         bottom_message,self.i_start,self.i_end).unwrap();
                     stdout.flush().unwrap();
-                    }
+                }
             }
         }
-        fn edit_output_for_test(&mut self,output:&mut String) {
-            // 시험모드
-            // word test -> 출력:mean,expample 가림:word
-            // mean test -> 출력:word,example  가림:means
-            let memo = &self.book[self.i_current];
-            let mut concealed_word = String::new();
-            for i in 0..memo.word.len() {
-                if i == 0 { concealed_word.push_str("<");}
-                concealed_word.push('?');
-                if i == memo.word.len()-1 { concealed_word.push_str(">");}
-            }
-            while output.contains(&memo.word) {
-                let result= output.find(&memo.word);
-                let start = match result {
-                    Some(val) => val,
-                    None => return,
-                };
-                let end = memo.word.len() + start;
-                println!("start: {},end :{}",start,end);
-                output.replace_range(start..end ,&concealed_word);
+        fn display_memo_test_mode2(&mut self) {
+            let mut stdout = stdout().into_raw_mode().unwrap();
+            let bottom_message = "[q]Quit,[r]:retry,[a]:answer,\n\r\
+                                  [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\n\r";
+            let mut can_input = false;
+
+
+            //key event
+            'outter: loop {
+                let mut stdin = stdin().lock();
+                //write!(stdout,"{}{} keys --clear",clear::All,cursor::Goto(1,1)).unwrap();
+                //stdout.flush().unwrap();
+
+                if can_input {
+                    can_input = false;
+                    let input_string = stdin.read_line().unwrap().unwrap();
+                    if input_string.contains(&self.book[self.i_current].word) {
+                        write!(stdout,"correct !").unwrap();
+                        stdout.flush().unwrap();
+                    }else {
+                        write!(stdout,"incorrect").unwrap();
+                        stdout.flush().unwrap();
+                    }
+                }
+                for c in stdin.keys() {
+                    match c.unwrap() {
+                        Key::Char('q') => {
+                            self.display_mode = DisplayMode::ShowAll;
+                            break 'outter;
+                        },
+                        Key::Char('n') => {
+                            if self.i_current < self.i_end {self.i_current += 1;}
+                        },
+                        Key::Char('a') => {
+                            can_input = true;
+                            break;
+                        },
+                        Key::Char('p') => {
+                            if self.i_start < self.i_current {self.i_current -= 1;}
+                        },
+                        Key::Char('m') => {
+                            if self.display_mode != DisplayMode::TestMean {
+                                self.display_mode = DisplayMode::TestMean;
+                            }
+                        },
+                        Key::Char('w') => {
+                            if self.display_mode != DisplayMode::TestWord{
+                                self.display_mode = DisplayMode::TestWord;
+                            }
+                        },
+                        _ => {continue;},
+                    }
+                    //make output ----
+                    let mut output = String::new();
+                    let memo = &self.book[self.i_current];
+                    if self.switch_word{
+                        self.output_word(&mut output,&memo);
+                    }
+                    if self.switch_mean{
+                        self.output_means(&mut output,&memo);
+                    }
+                    if self.switch_example{
+                        self.output_examples(&mut output,&memo);
+                    }
+                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                    stdout.flush().unwrap();
+                    write!(stdout,"{}\n\r",output).unwrap();
+                    write!(stdout,"[{}]\n\r",self.i_current).unwrap();
+                    write!(stdout,"{}range({},{})",
+                        bottom_message,self.i_start,self.i_end).unwrap();
+                    stdout.flush().unwrap();
+
+                    }
             }
         }
         fn output_word(&self,output:&mut String,memo:&Memo){
