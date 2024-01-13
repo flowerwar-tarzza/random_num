@@ -5,7 +5,7 @@ use termion::{clear,cursor,async_stdin};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode};
-
+use termion::cursor::DetectCursorPos;
 
 pub mod memo {
     use super::*;
@@ -33,7 +33,13 @@ pub mod memo {
         TestMean, // mean test: show Word,example(conceiled mean)
         ShowAll,
     }
-
+    enum Page{
+        Main,
+        Test,
+        Learn,
+        Auto,
+        SetRange,
+    }
     // word manager
     // indexing, start to end
     // display method ,,각필드의 보여주기 선택
@@ -48,6 +54,7 @@ pub mod memo {
         switch_mean:bool,
         switch_example:bool,
         display_mode:DisplayMode,
+        page:Page,
     }
     impl MemoManager {
         pub fn build(book:Vec<Memo>) -> MemoManager{
@@ -61,45 +68,88 @@ pub mod memo {
                 switch_mean:true,
                 switch_example:true,
                 display_mode:DisplayMode::ShowAll,
+                page:Page::Main,
             };
             temp
         }
+        pub fn run(&mut self) {
+            let mut stdout = stdout().into_raw_mode().unwrap();
 
-        pub fn display_memo_manual(&mut self) {
+            let book_info_string = format!("total memo: {}",self.total_memo);
+            let control_message = format!("(L)earn:(T)est:(S)et Range:(A)uto:(Q)uit");
+
+            'main: loop{
+                let head_message = self.make_head_message();
+                let stdin = stdin();
+                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1));
+                write!(stdout,"{}\n\r",head_message);
+                write!(stdout,"{}\n\r",book_info_string);
+                write!(stdout,"{}\n\r",control_message);
+                stdout.flush().unwrap();
+
+                for c in stdin.keys() {
+                    match c.unwrap() {
+                        Key::Char('l') => { self.page = Page::Learn;
+                            stdout.suspend_raw_mode();
+                            self.page_learn();
+                            stdout.activate_raw_mode();
+                            break;} ,
+                        Key::Char('t') => {  self.page = Page::Test;
+                            stdout.suspend_raw_mode();
+                            self.display_mode = DisplayMode::TestWord;
+                            self.page_test();
+                            stdout.activate_raw_mode();
+                            break;} ,
+                        Key::Char('a') => {  self.page = Page::Auto;
+                            stdout.suspend_raw_mode();
+                            self.page_auto();
+                            stdout.activate_raw_mode();
+                            break;} ,
+                        Key::Char('s') => {  self.page = Page::SetRange;
+                            stdout.suspend_raw_mode();
+                            self.page_set_range();
+                            stdout.activate_raw_mode();
+                            break;},
+                        Key::Char('q') => { break 'main;},
+                        _ => {println!("other key pressed!\r");},
+                    }
+                }
+            }
+        }
+        fn page_learn(&mut self) {
             self.i_current = self.i_start;
-            let bottom_message = "[N]Next,[p]previous,[w][m][e]toggle,Range[r][q]Quit\n\r";
-            let mut is_range_page:bool = false; // range key input :stdin borrow error
-                                               // for c in stdin.keys() 내에 사용불가
-                                               // :우회방법 으로 outer loop 사용
+            let head_message = self.make_head_message();
+            let bottom_message = "[N]Next,[p]previous,[w][m][e]toggle,[q]Quit\n\r";
 
             let mut stdout = io::stdout().into_raw_mode().unwrap();
-            write!(stdout,"{}\n\r","press any to start!").unwrap();
-            stdout.flush().unwrap();
             'outter: loop {
                 let mut stdin = stdin();
-                let mut first_enter:bool = true; // 첫 출력시 self.i_current 증가 방지
-                if is_range_page {  // 범위 지정을 위한 화면과 라인 읽기
-                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                    write!(stdout,"{}{}\n\r",
-                           format!("range set({},{})",0,self.total_memo - 1),
-                           cursor::Show).unwrap();
-                    stdout.flush().unwrap();
-                    let _ = stdout.suspend_raw_mode(); // stdout : show  key input
-                    let input = TermRead::read_line(&mut stdin).unwrap().unwrap();
-                    let _ = stdout.activate_raw_mode();
-                    write!(stdout,"your input :{}\n\r",input).unwrap();
-                    stdout.flush().unwrap();
-                    self.set_indexs(input);
-                    is_range_page = false;
+               //make output ----
+                let mut output = String::new();
+                let memo = &self.book[self.i_current];
+                if self.switch_word{
+                    self.output_word(&mut output,&memo);
                 }
+                if self.switch_mean{
+                    self.output_means(&mut output,&memo);
+                }
+                if self.switch_example{
+                    self.output_examples(&mut output,&memo);
+                }
+                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                write!(stdout,"{}\n\r",head_message).unwrap();
+                write!(stdout,"{}\n\r",output).unwrap();
+                write!(stdout,"[{}]\n\r",self.i_current).unwrap();
+                write!(stdout,"{}range({},{})",
+                    bottom_message,self.i_start,self.i_end).unwrap();
+                stdout.flush().unwrap();
+
                 // ==== key input control
                 for c in stdin.keys() {
                     match c.unwrap() {
                         Key::Char('n') => {
-                            if self.i_current < self.i_end && !first_enter {
+                            if self.i_current < self.i_end {
                                 self.i_current += 1;
-                            }else {
-                                first_enter = false;
                             }
                         },
                         Key::Char('p') => {
@@ -108,54 +158,40 @@ pub mod memo {
                             }
                         },
                         Key::Char('q') => {
-                            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                            //write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
                             //stdout.flush().unwrap();
+                            self.page = Page::Main;
                             break 'outter
                         },
                         Key::Char('w') => self.switch_word = !self.switch_word,
                         Key::Char('m') => self.switch_mean = !self.switch_mean,
                         Key::Char('e') => self.switch_example = !self.switch_example,
-                        Key::Char('a') => self.display_memo_auto_mode() , //auto mode
-                        Key::Char('t') => {
-                            self.display_mode = DisplayMode::TestWord;
-                            stdout.suspend_raw_mode();
-                            self.display_memo_test_mode();
-                            stdout.activate_raw_mode();
-                        }, //test mode
-                        Key::Char('r') => {
-                            is_range_page = true;
-                            break;
-                        },
                         _ => {
                             write!(stdout,"your input : other key\n\r").unwrap();
                             stdout.flush().unwrap();
                             continue;
                         },
                     }
-
-                    //make output ----
-                    let mut output = String::new();
-                    let memo = &self.book[self.i_current];
-                    if self.switch_word{
-                        self.output_word(&mut output,&memo);
-                    }
-                    if self.switch_mean{
-                        self.output_means(&mut output,&memo);
-                    }
-                    if self.switch_example{
-                        self.output_examples(&mut output,&memo);
-                    }
-                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                    write!(stdout,"{}\n\r",output).unwrap();
-                    write!(stdout,"[{}]\n\r",self.i_current).unwrap();
-                    write!(stdout,"{}range({},{})",
-                        bottom_message,self.i_start,self.i_end).unwrap();
-                    stdout.flush().unwrap();
+                    break;
                 }
 
             }
         }
-        fn display_memo_auto_mode(&mut self) {
+        fn page_set_range(&mut self) {
+            let mut stdout =stdout().into_raw_mode().unwrap();
+            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+            write!(stdout,"{}{}\n\r",
+                   format!("range set({},{})",0,self.total_memo - 1),
+                   cursor::Show).unwrap();
+            stdout.flush().unwrap();
+            let _ = stdout.suspend_raw_mode(); // stdout : show  key input
+            let input = TermRead::read_line(&mut stdin()).unwrap().unwrap();
+            let _ = stdout.activate_raw_mode();
+            write!(stdout,"your input :{}\n\r",input).unwrap();
+            stdout.flush().unwrap();
+            self.set_indexs(input);
+        }
+        fn page_auto(&mut self) {
             let mut in_buff = async_stdin().bytes();
             let mut stdout = stdout().lock().into_raw_mode().unwrap();
 
@@ -211,6 +247,16 @@ pub mod memo {
                 }
             }
         }
+        fn make_head_message(&self) ->String{
+            let current_page = match self.page {
+                Page::Main => {"Main Page"},
+                Page::Test => {"Test page"},
+                Page::Learn => {"Learn page"},
+                Page::SetRange => {"Learn page"},
+                Page::Auto => {"Auto Next page"},
+            };
+            format!("{}:({}:{})",current_page,self.i_start,self.i_end)
+        }
         fn set_indexs(&mut self,input:String) { // set index range (start, end)
             let v_inputs:Vec<_> = input.trim().split(',').collect();
             self.i_start = v_inputs[0].parse::<usize>().unwrap();
@@ -221,7 +267,8 @@ pub mod memo {
                 self.i_end %= self.total_memo;
             }
         }
-        pub fn display_memo_test_mode(&mut self) {
+        fn page_test(&mut self) {
+            let mut head_message = self.make_head_message();
             let mut stdout = stdout().into_raw_mode().unwrap();
             let bottom_message = "[q]Quit,[r]:retry,[a]:answer,\n\r\
                                   [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\n\r";
@@ -231,24 +278,41 @@ pub mod memo {
             //key event
             'outter: loop {
                 let mut stdin = stdin();
-                //write!(stdout,"{}{} keys --clear",clear::All,cursor::Goto(1,1)).unwrap();
-                //stdout.flush().unwrap();
                 if can_input {
                     can_input = false;
-                    write!(stdout,"\n\ranwser me\n\r").unwrap();
+                    write!(stdout,"\n\ranwser me:").unwrap();
                     stdout.flush().unwrap();
 
                     let _ = stdout.suspend_raw_mode();
                     let input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
                     if input_string.contains(&self.book[self.i_current].word) {
-                        write!(stdout,"\n\rcorrect !").unwrap();
-                        stdout.flush().unwrap();
+                        head_message.push_str(":0!");
+                        if self.i_current < self.i_end {self.i_current += 1;}
                     }else {
-                        write!(stdout,"\n\rincorrect").unwrap();
-                        stdout.flush().unwrap();
+                        head_message.push_str(":x!");
                     }
                 }
+                //make output ----
+                let mut output = String::new();
+                let memo = &self.book[self.i_current];
+                if self.switch_word{
+                    self.output_word(&mut output,&memo);
+                }
+                if self.switch_mean{
+                    self.output_means(&mut output,&memo);
+                }
+                if self.switch_example{
+                    self.output_examples(&mut output,&memo);
+                }
+                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                stdout.flush().unwrap();
+                write!(stdout,"{}\n\r",head_message).unwrap();
+                write!(stdout,"{}\n\r",output).unwrap();
+                write!(stdout,"[{}]\n\r{}\n\r",self.i_current,bottom_message).unwrap();
+                write!(stdout,"press enter to answer!:").unwrap();
+                stdout.flush().unwrap();
+
                 for c in stdin.keys() {
                     match c.unwrap() {
                         Key::Char('q') => {
@@ -258,9 +322,8 @@ pub mod memo {
                         Key::Char('n') => {
                             if self.i_current < self.i_end {self.i_current += 1;}
                         },
-                        Key::Char('a') => {
+                        Key::Esc => {
                             can_input = true;
-                            break;
                         },
                         Key::Char('p') => {
                             if self.i_start < self.i_current {self.i_current -= 1;}
@@ -277,104 +340,11 @@ pub mod memo {
                         },
                         _ => {continue;},
                     }
-                    //make output ----
-                    let mut output = String::new();
-                    let memo = &self.book[self.i_current];
-                    if self.switch_word{
-                        self.output_word(&mut output,&memo);
-                    }
-                    if self.switch_mean{
-                        self.output_means(&mut output,&memo);
-                    }
-                    if self.switch_example{
-                        self.output_examples(&mut output,&memo);
-                    }
-                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                    stdout.flush().unwrap();
-                    write!(stdout,"{}\n\r",output).unwrap();
-                    write!(stdout,"[{}]\n\r",self.i_current).unwrap();
-                    write!(stdout,"{}range({},{})",
-                        bottom_message,self.i_start,self.i_end).unwrap();
-                    stdout.flush().unwrap();
+                    break;
                 }
             }
         }
-        fn display_memo_test_mode2(&mut self) {
-            let mut stdout = stdout().into_raw_mode().unwrap();
-            let bottom_message = "[q]Quit,[r]:retry,[a]:answer,\n\r\
-                                  [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\n\r";
-            let mut can_input = false;
-
-
-            //key event
-            'outter: loop {
-                let mut stdin = stdin().lock();
-                //write!(stdout,"{}{} keys --clear",clear::All,cursor::Goto(1,1)).unwrap();
-                //stdout.flush().unwrap();
-
-                if can_input {
-                    can_input = false;
-                    let input_string = stdin.read_line().unwrap().unwrap();
-                    if input_string.contains(&self.book[self.i_current].word) {
-                        write!(stdout,"correct !").unwrap();
-                        stdout.flush().unwrap();
-                    }else {
-                        write!(stdout,"incorrect").unwrap();
-                        stdout.flush().unwrap();
-                    }
-                }
-                for c in stdin.keys() {
-                    match c.unwrap() {
-                        Key::Char('q') => {
-                            self.display_mode = DisplayMode::ShowAll;
-                            break 'outter;
-                        },
-                        Key::Char('n') => {
-                            if self.i_current < self.i_end {self.i_current += 1;}
-                        },
-                        Key::Char('a') => {
-                            can_input = true;
-                            break;
-                        },
-                        Key::Char('p') => {
-                            if self.i_start < self.i_current {self.i_current -= 1;}
-                        },
-                        Key::Char('m') => {
-                            if self.display_mode != DisplayMode::TestMean {
-                                self.display_mode = DisplayMode::TestMean;
-                            }
-                        },
-                        Key::Char('w') => {
-                            if self.display_mode != DisplayMode::TestWord{
-                                self.display_mode = DisplayMode::TestWord;
-                            }
-                        },
-                        _ => {continue;},
-                    }
-                    //make output ----
-                    let mut output = String::new();
-                    let memo = &self.book[self.i_current];
-                    if self.switch_word{
-                        self.output_word(&mut output,&memo);
-                    }
-                    if self.switch_mean{
-                        self.output_means(&mut output,&memo);
-                    }
-                    if self.switch_example{
-                        self.output_examples(&mut output,&memo);
-                    }
-                    write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                    stdout.flush().unwrap();
-                    write!(stdout,"{}\n\r",output).unwrap();
-                    write!(stdout,"[{}]\n\r",self.i_current).unwrap();
-                    write!(stdout,"{}range({},{})",
-                        bottom_message,self.i_start,self.i_end).unwrap();
-                    stdout.flush().unwrap();
-
-                    }
-            }
-        }
-        fn output_word(&self,output:&mut String,memo:&Memo){
+       fn output_word(&self,output:&mut String,memo:&Memo){
             // test mode , display_mode,
             // make output
             match self.display_mode {
