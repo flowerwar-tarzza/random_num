@@ -7,6 +7,9 @@ use termion::input::TermRead;
 use termion::raw::{IntoRawMode};
 use termion::cursor::DetectCursorPos;
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 pub mod memo {
     use super::*;
 
@@ -28,9 +31,13 @@ pub mod memo {
         }
     }
     #[derive(PartialEq)]
-    enum DisplayMode{
-        TestWord, // word test: show Mean(conceiled word,example)
-        TestMean, // mean test: show Word,example(conceiled mean)
+    enum DisplayMode{ // refer this for makeing output string
+        TestWordByMean,
+        TestWordByExample,
+        TestWordByBoth,
+        TestMeanByWord,
+        TestMeanByExample,
+        TestMeanByBoth,
         ShowAll,
     }
     enum Page{
@@ -96,7 +103,7 @@ pub mod memo {
                             break;} ,
                         Key::Char('t') => {  self.page = Page::Test;
                             stdout.suspend_raw_mode();
-                            self.display_mode = DisplayMode::TestWord;
+                            self.display_mode = DisplayMode::TestWordByBoth;
                             self.page_test();
                             stdout.activate_raw_mode();
                             break;} ,
@@ -140,7 +147,7 @@ pub mod memo {
                 write!(stdout,"{}\n\r",head_message).unwrap();
                 write!(stdout,"{}\n\r",output).unwrap();
                 write!(stdout,"[{}]\n\r",self.i_current).unwrap();
-                write!(stdout,"{}range({},{})",
+                write!(stdout,"{}rakge({},{})",
                     bottom_message,self.i_start,self.i_end).unwrap();
                 stdout.flush().unwrap();
 
@@ -200,20 +207,12 @@ pub mod memo {
 
             let buttom_message = "Exit Auto Mode : [q] / toggle switch : [w,m,e]/ replay :[r] ";
             loop {
-                // key input check
-                //let read = in_buff.next();
-                //if let Some(Ok(b'q')) = read {
-                    //break;
-                //}
-
                 let read = in_buff.next();
                 let mut key = b'_';
                 match read {
                     Some(val) => {key = val.unwrap();},
                     None => {},
                 }
-                //write!(stdout,"{}\n\r",read).unwrap();
-                //stdout.flush().unwrap();
                 match key {
                     b'q' => break,
                     b'w' => { self.switch_word = !self.switch_word},
@@ -267,18 +266,32 @@ pub mod memo {
                 self.i_end %= self.total_memo;
             }
         }
+
         fn page_test(&mut self) {
+            self.switch_word =true;
+            self.switch_mean =true;
+            self.switch_example =true;
+
             let mut head_message = self.make_head_message();
             let mut stdout = stdout().into_raw_mode().unwrap();
-            let bottom_message = "[q]Quit,[r]:retry,[a]:answer,\n\r\
-                                  [n]:next,[p]:previous,[w]:WordMode,[m]:MeanMode\n\r";
+            let bottom_message = "[q]Quit,[r]:retry,[Enter]:answer,\n\r\
+                                  [s]:switch test mode (word <-> mean),\
+                                  [h]:hint switch\n\r";
             let mut can_input = false;
+            let mut reach_end = false;
+            //shuffle indexs
+            let mut rng = thread_rng();
+            let mut shuffled_indexes:Vec<_> = (self.i_start..= self.i_end).into_iter().collect();
+            shuffled_indexes.shuffle(&mut rng);
 
+            let mut test_result_message = String::new();
 
+            self.i_current = shuffled_indexes.pop().unwrap();
             //key event
             'outter: loop {
                 let mut stdin = stdin();
-                if can_input {
+
+                if can_input && !reach_end {
                     can_input = false;
                     write!(stdout,"\n\ranwser me:").unwrap();
                     stdout.flush().unwrap();
@@ -287,10 +300,14 @@ pub mod memo {
                     let input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
                     if input_string.contains(&self.book[self.i_current].word) {
-                        head_message.push_str(":0!");
-                        if self.i_current < self.i_end {self.i_current += 1;}
+                        test_result_message.push_str(":0!");
+                        if shuffled_indexes.len() > 0  {self.i_current = shuffled_indexes.pop().unwrap();}
+                        else {
+                            test_result_message.push_str("reach end!");
+                            reach_end = true;
+                        }
                     }else {
-                        head_message.push_str(":x!");
+                        test_result_message.push_str(":x!");
                     }
                 }
                 //make output ----
@@ -308,8 +325,8 @@ pub mod memo {
                 write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
                 stdout.flush().unwrap();
                 write!(stdout,"{}\n\r",head_message).unwrap();
-                write!(stdout,"{}\n\r",output).unwrap();
-                write!(stdout,"[{}]\n\r{}\n\r",self.i_current,bottom_message).unwrap();
+                write!(stdout,"{}",output).unwrap();
+                write!(stdout,"[{}]{}\n\r{}",self.i_current,test_result_message,bottom_message).unwrap();
                 write!(stdout,"press enter to answer!:").unwrap();
                 stdout.flush().unwrap();
 
@@ -319,23 +336,36 @@ pub mod memo {
                             self.display_mode = DisplayMode::ShowAll;
                             break 'outter;
                         },
-                        Key::Char('n') => {
-                            if self.i_current < self.i_end {self.i_current += 1;}
-                        },
-                        Key::Esc => {
+                        Key::Char('\n')=> {
                             can_input = true;
                         },
-                        Key::Char('p') => {
-                            if self.i_start < self.i_current {self.i_current -= 1;}
-                        },
-                        Key::Char('m') => {
-                            if self.display_mode != DisplayMode::TestMean {
-                                self.display_mode = DisplayMode::TestMean;
+                        Key::Char('h') => {
+                            if self.display_mode == DisplayMode::TestWordByMean{
+                                self.display_mode = DisplayMode::TestWordByExample;
+                            }
+                            else if self.display_mode == DisplayMode::TestWordByExample{
+                                self.display_mode = DisplayMode::TestWordByMean;
+                            }
+                            else if self.display_mode == DisplayMode::TestMeanByExample{
+                                self.display_mode = DisplayMode::TestMeanByWord;
+                            }
+                            else if self.display_mode == DisplayMode::TestMeanByWord{
+                                self.display_mode = DisplayMode::TestMeanByExample;
+                            }
+                            else if self.display_mode == DisplayMode::TestWordByBoth{
+                                self.display_mode = DisplayMode::TestWordByMean;
+                            }
+                            else if self.display_mode == DisplayMode::TestMeanByBoth{
+                                self.display_mode = DisplayMode::TestMeanByWord;
                             }
                         },
-                        Key::Char('w') => {
-                            if self.display_mode != DisplayMode::TestWord{
-                                self.display_mode = DisplayMode::TestWord;
+                        Key::Char('s') => {
+                            match self.display_mode {
+                                DisplayMode::TestWordByBoth | DisplayMode::TestWordByMean | DisplayMode::TestWordByExample
+                                => self.display_mode = DisplayMode::TestMeanByBoth ,
+                                DisplayMode::TestMeanByBoth | DisplayMode::TestMeanByWord | DisplayMode::TestMeanByExample
+                                => self.display_mode = DisplayMode::TestWordByBoth,
+                                _ => {},
                             }
                         },
                         _ => {continue;},
@@ -348,29 +378,30 @@ pub mod memo {
             // test mode , display_mode,
             // make output
             match self.display_mode {
-                DisplayMode::TestWord => {
+                DisplayMode::TestWordByBoth | DisplayMode::TestWordByMean | DisplayMode::TestWordByExample => {
                     let mut concealed_word = String::new();
                     for _i in memo.word.chars() {
                         concealed_word.push('_');
                     }
                     output.push_str(&format!("{}\n\r",concealed_word));
                 },
-                DisplayMode::TestMean => {
+                DisplayMode::TestMeanByWord | DisplayMode::TestMeanByBoth=> {
                     output.push_str(&format!("{} \n\r",memo.word));
                 },
                 DisplayMode::ShowAll => {
                     output.push_str(&format!("{} [{}]\n\r",memo.word,memo.pornounce));
                 },
+                _ => {},
             }
         }
         fn output_means(&self,output:&mut String,memo:&Memo) {
             match self.display_mode {
-                DisplayMode::TestWord => {
+                DisplayMode::TestWordByBoth | DisplayMode::TestWordByMean => {
                     for e in &memo.meanings {
                         output.push_str(&format!("{}\n\r",e));
                     }
                 },
-                DisplayMode::TestMean => {
+                DisplayMode::TestMeanByBoth | DisplayMode::TestMeanByWord | DisplayMode::TestMeanByExample => {
                     for _e in &memo.meanings {
                         output.push_str(&format!("?_____\n\r"));
                     }
@@ -380,18 +411,19 @@ pub mod memo {
                         output.push_str(&format!("{}\n\r",e));
                     }
                 },
+                _ => {},
             }
         }
         fn output_examples(&self,output:&mut String,memo:&Memo) {
             let concealed_word = String::from("?".repeat(memo.word.len()));
             match self.display_mode {
-                DisplayMode::TestWord => {
+                DisplayMode::TestWordByBoth | DisplayMode::TestWordByExample => {
                     for e in &memo.ex_sentence{
                         let concealed_example = e.replace(&memo.word,&concealed_word);
                         output.push_str(&format!("{}\n\r",concealed_example));
                     }
                 },
-                DisplayMode::TestMean => {
+                DisplayMode::TestMeanByBoth | DisplayMode::TestMeanByExample => {
                     for e in &memo.ex_sentence{
                         output.push_str(&format!("{}\n\r",e))
                     }
@@ -401,6 +433,7 @@ pub mod memo {
                         output.push_str(&format!("{}\n\r",e))
                     }
                 },
+                _ => {},
             }
         }
     }
@@ -452,5 +485,15 @@ mod tests {
         let s = "\n Hello\tworld\t\n";
         assert_eq!("Hello\tworld",s.trim());
         assert_eq!("\n Hello\tworld\t\n",s);
+
+        let mut rng = thread_rng();
+        //let mut deck = [1,2,3,4,5,6,7];
+        let a = 1;
+        let b = 50;
+        let mut deck:Vec<_> = (a..b).into_iter().collect();
+        println!("Unshuffled: {:?}",deck);
+        deck.shuffle(&mut rng);
+        println!("shuffled: {:?}",deck);
+
     }
 }
