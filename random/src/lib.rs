@@ -1,11 +1,8 @@
-use std::{fs,thread};
-use std::time::Duration;
+use std::{fs,thread,time::Duration};
 use std::io::{self,Write,stdin,stdout,Read};
-use termion::{clear,cursor,async_stdin};
-use termion::event::Key;
-use termion::input::TermRead;
-use termion::raw::{IntoRawMode};
-use termion::cursor::DetectCursorPos;
+use termion::{clear,cursor,cursor::DetectCursorPos,async_stdin};
+use termion::{event::Key,input::TermRead,raw::IntoRawMode};
+use std::collections::HashMap;
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -62,9 +59,10 @@ pub mod memo {
         switch_example:bool,
         display_mode:DisplayMode,
         page:Page,
+        file_name:String,
     }
     impl MemoManager {
-        pub fn build(book:Vec<Memo>) -> MemoManager{
+        pub fn build(book:Vec<Memo>,file_name:String) -> MemoManager{
             let temp = MemoManager {
                 total_memo: book.len(),
                 i_start: 0,
@@ -76,6 +74,7 @@ pub mod memo {
                 switch_example:true,
                 display_mode:DisplayMode::ShowAll,
                 page:Page::Main,
+                file_name,
             };
             temp
         }
@@ -154,19 +153,17 @@ pub mod memo {
                 // ==== key input control
                 for c in stdin.keys() {
                     match c.unwrap() {
-                        Key::Char('n') => {
+                        Key::Char('n') | Key::Right => {
                             if self.i_current < self.i_end {
                                 self.i_current += 1;
                             }
                         },
-                        Key::Char('p') => {
+                        Key::Char('p') | Key::Left => {
                             if self.i_current > self.i_start {
                                 self.i_current -= 1
                             }
                         },
                         Key::Char('q') => {
-                            //write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                            //stdout.flush().unwrap();
                             self.page = Page::Main;
                             break 'outter
                         },
@@ -202,8 +199,7 @@ pub mod memo {
             let mut in_buff = async_stdin().bytes();
             let mut stdout = stdout().lock().into_raw_mode().unwrap();
 
-            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-            stdout.flush().unwrap();
+            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap(); stdout.flush().unwrap();
 
             let buttom_message = "Exit Auto Mode : [q] / toggle switch : [w,m,e]/ replay :[r] ";
             loop {
@@ -254,7 +250,7 @@ pub mod memo {
                 Page::SetRange => {"Learn page"},
                 Page::Auto => {"Auto Next page"},
             };
-            format!("{}:({}:{})",current_page,self.i_start,self.i_end)
+            format!("{}:{}-({}:{})",current_page,self.file_name,self.i_start,self.i_end)
         }
         fn set_indexs(&mut self,input:String) { // set index range (start, end)
             let v_inputs:Vec<_> = input.trim().split(',').collect();
@@ -267,16 +263,23 @@ pub mod memo {
             }
         }
 
-        fn page_test(&mut self) {
+        fn switch_all_on(&mut self) {
             self.switch_word =true;
             self.switch_mean =true;
             self.switch_example =true;
+        }
+        fn page_test(&mut self) {
+            self.switch_all_on();
+            let mut tr_correct:HashMap<usize,Vec<&str>> = HashMap::new();
+            let mut tr_incorrect:HashMap<usize,Vec<&str>> = HashMap::new();
 
             let mut head_message = self.make_head_message();
             let mut stdout = stdout().into_raw_mode().unwrap();
             let bottom_message = "[q]Quit,[r]:retry,[Enter]:answer,\n\r\
                                   [s]:switch test mode (word <-> mean),\
-                                  [h]:hint switch\n\r";
+                                  [h]:hint switch,\
+                                  [x]:show incorrect answer\n\r\
+                                  ";
             let mut can_input = false;
             let mut reach_end = false;
             //shuffle indexs
@@ -287,7 +290,7 @@ pub mod memo {
             let mut test_result_message = String::new();
 
             self.i_current = shuffled_indexes.pop().unwrap();
-            //key event
+            //key event , screen display
             'outter: loop {
                 let mut stdin = stdin();
 
@@ -299,15 +302,19 @@ pub mod memo {
                     let _ = stdout.suspend_raw_mode();
                     let input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
+                    // check the answer for the memo
+                    // inert the result in test result maps:tr_correct,tr_incorrect
                     if input_string.contains(&self.book[self.i_current].word) {
-                        test_result_message.push_str(":0!");
+                        test_result_message=":0!".to_string();
+                        tr_correct.entry(self.i_current).or_insert(Vec::new()).push("o");
                         if shuffled_indexes.len() > 0  {self.i_current = shuffled_indexes.pop().unwrap();}
                         else {
                             test_result_message.push_str("reach end!");
                             reach_end = true;
                         }
                     }else {
-                        test_result_message.push_str(":x!");
+                        tr_incorrect.entry(self.i_current).or_insert(Vec::new()).push("x");
+                        test_result_message=":x!".to_string();
                     }
                 }
                 //make output ----
@@ -368,6 +375,13 @@ pub mod memo {
                                 _ => {},
                             }
                         },
+                        Key::Char('x') => {
+                            for (key,value) in &tr_incorrect {
+                                println!("{}\r",self.book[*key].word); // --- *key
+                            }
+                            thread::sleep(Duration::from_millis(2000));
+
+                        }
                         _ => {continue;},
                     }
                     break;
@@ -381,11 +395,11 @@ pub mod memo {
                 DisplayMode::TestWordByBoth | DisplayMode::TestWordByMean | DisplayMode::TestWordByExample => {
                     let mut concealed_word = String::new();
                     for _i in memo.word.chars() {
-                        concealed_word.push('_');
+                        concealed_word.push('?');
                     }
                     output.push_str(&format!("{}\n\r",concealed_word));
                 },
-                DisplayMode::TestMeanByWord | DisplayMode::TestMeanByBoth=> {
+                DisplayMode::TestMeanByWord | DisplayMode::TestMeanByBoth => {
                     output.push_str(&format!("{} \n\r",memo.word));
                 },
                 DisplayMode::ShowAll => {
@@ -422,6 +436,7 @@ pub mod memo {
                         let concealed_example = e.replace(&memo.word,&concealed_word);
                         output.push_str(&format!("{}\n\r",concealed_example));
                     }
+                    output.trim();
                 },
                 DisplayMode::TestMeanByBoth | DisplayMode::TestMeanByExample => {
                     for e in &memo.ex_sentence{
@@ -438,7 +453,7 @@ pub mod memo {
         }
     }
 
-    pub fn make_book(path:String) -> Vec<Memo> {
+    pub fn make_book(path:&String) -> Vec<Memo> {
         let read_file = match fs::read_to_string(path) {
             Ok(result) => result,
             Err(e) => panic!("{e}"),
@@ -494,6 +509,18 @@ mod tests {
         println!("Unshuffled: {:?}",deck);
         deck.shuffle(&mut rng);
         println!("shuffled: {:?}",deck);
+    }
 
+    #[test]
+    fn test_hashmap(){
+        let mut tresult:HashMap<usize,Vec<&str>> = HashMap::new();
+        let default = "ox";
+        let mut tvec = Vec::new();
+        *&tvec.push("test value");
+        tresult.entry(3).or_insert(Vec::new()).push("x");
+        tresult.entry(3).or_insert(Vec::new()).push("o");
+
+        println!("{:?}",tresult);
+        println!("{:?}",tvec);
     }
 }

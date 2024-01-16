@@ -12,10 +12,8 @@ fn main() {
     args.next(); // discard run file
     let file_name = args.next().unwrap();
 
-    let book = make_book(file_name);
-    let mut memo_manager = MemoManager::build(book);
+    let book = make_book(&file_name);
+    let mut memo_manager = MemoManager::build(book,file_name);
 
-    //memo_manager.display_memo_test_mode();
-    //memo_manager.page_learn();
     memo_manager.run();
 }
