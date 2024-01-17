@@ -1,8 +1,10 @@
-use std::{fs,thread,time::Duration};
+use std::{thread,time::Duration};
+use std::fs::{self,File};
 use std::io::{self,Write,stdin,stdout,Read};
 use termion::{clear,cursor,cursor::DetectCursorPos,async_stdin};
 use termion::{event::Key,input::TermRead,raw::IntoRawMode};
 use std::collections::HashMap;
+use chrono::{Local,DateTime};
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -87,34 +89,34 @@ pub mod memo {
             'main: loop{
                 let head_message = self.make_head_message();
                 let stdin = stdin();
-                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1));
-                write!(stdout,"{}\n\r",head_message);
-                write!(stdout,"{}\n\r",book_info_string);
-                write!(stdout,"{}\n\r",control_message);
+                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                write!(stdout,"{}\n\r",head_message).unwrap();
+                write!(stdout,"{}\n\r",book_info_string).unwrap();
+                write!(stdout,"{}\n\r",control_message).unwrap();
                 stdout.flush().unwrap();
 
                 for c in stdin.keys() {
                     match c.unwrap() {
                         Key::Char('l') => { self.page = Page::Learn;
-                            stdout.suspend_raw_mode();
+                            let _ = stdout.suspend_raw_mode();
                             self.page_learn();
-                            stdout.activate_raw_mode();
+                            let _ = stdout.activate_raw_mode();
                             break;} ,
                         Key::Char('t') => {  self.page = Page::Test;
-                            stdout.suspend_raw_mode();
+                            let _ = stdout.suspend_raw_mode();
                             self.display_mode = DisplayMode::TestWordByBoth;
                             self.page_test();
-                            stdout.activate_raw_mode();
+                            let _ = stdout.activate_raw_mode();
                             break;} ,
                         Key::Char('a') => {  self.page = Page::Auto;
-                            stdout.suspend_raw_mode();
+                            let _ = stdout.suspend_raw_mode();
                             self.page_auto();
-                            stdout.activate_raw_mode();
+                            let _ = stdout.activate_raw_mode();
                             break;} ,
                         Key::Char('s') => {  self.page = Page::SetRange;
-                            stdout.suspend_raw_mode();
+                            let _ = stdout.suspend_raw_mode();
                             self.page_set_range();
-                            stdout.activate_raw_mode();
+                            let _ = stdout.activate_raw_mode();
                             break;},
                         Key::Char('q') => { break 'main;},
                         _ => {println!("other key pressed!\r");},
@@ -129,7 +131,7 @@ pub mod memo {
 
             let mut stdout = io::stdout().into_raw_mode().unwrap();
             'outter: loop {
-                let mut stdin = stdin();
+                let stdin = stdin();
                //make output ----
                 let mut output = String::new();
                 let memo = &self.book[self.i_current];
@@ -270,10 +272,10 @@ pub mod memo {
         }
         fn page_test(&mut self) {
             self.switch_all_on();
-            let mut tr_correct:HashMap<usize,Vec<&str>> = HashMap::new();
+            //let mut tr_correct:HashMap<usize,Vec<&str>> = HashMap::new();
             let mut tr_incorrect:HashMap<usize,Vec<&str>> = HashMap::new();
 
-            let mut head_message = self.make_head_message();
+            let head_message = self.make_head_message();
             let mut stdout = stdout().into_raw_mode().unwrap();
             let bottom_message = "[q]Quit,[r]:retry,[Enter]:answer,\n\r\
                                   [s]:switch test mode (word <-> mean),\
@@ -306,15 +308,17 @@ pub mod memo {
                     // inert the result in test result maps:tr_correct,tr_incorrect
                     if input_string.contains(&self.book[self.i_current].word) {
                         test_result_message=":0!".to_string();
-                        tr_correct.entry(self.i_current).or_insert(Vec::new()).push("o");
-                        if shuffled_indexes.len() > 0  {self.i_current = shuffled_indexes.pop().unwrap();}
-                        else {
-                            test_result_message.push_str("reach end!");
-                            reach_end = true;
-                        }
                     }else {
                         tr_incorrect.entry(self.i_current).or_insert(Vec::new()).push("x");
                         test_result_message=":x!".to_string();
+                    }
+                    // next word index
+                    if shuffled_indexes.len() > 0  {
+                        self.i_current = shuffled_indexes.pop().unwrap();}
+                    else {
+                        test_result_message.push_str("reach end!");
+                        reach_end = true;
+                        save_incorrect_log(&tr_incorrect,self.i_start,self.i_end);
                     }
                 }
                 //make output ----
@@ -376,7 +380,7 @@ pub mod memo {
                             }
                         },
                         Key::Char('x') => {
-                            for (key,value) in &tr_incorrect {
+                            for (key,_value) in &tr_incorrect {
                                 println!("{}\r",self.book[*key].word); // --- *key
                             }
                             thread::sleep(Duration::from_millis(2000));
@@ -388,6 +392,7 @@ pub mod memo {
                 }
             }
         }
+
        fn output_word(&self,output:&mut String,memo:&Memo){
             // test mode , display_mode,
             // make output
@@ -436,7 +441,7 @@ pub mod memo {
                         let concealed_example = e.replace(&memo.word,&concealed_word);
                         output.push_str(&format!("{}\n\r",concealed_example));
                     }
-                    output.trim();
+                    let _ = output.trim();
                 },
                 DisplayMode::TestMeanByBoth | DisplayMode::TestMeanByExample => {
                     for e in &memo.ex_sentence{
@@ -451,6 +456,31 @@ pub mod memo {
                 _ => {},
             }
         }
+    }
+    fn save_incorrect_log(tr_incorrect:&HashMap<usize,Vec<&str>> ,i_start:usize,i_end:usize) {
+        let fd = File::options().create(true).append(true).open("incorrect.log");
+        let mut date_time =format!("{}", Local::now().format("%Y/%m/%D %H:%M"));
+        date_time.push(':');
+        let mut contents_for_log = String::new();
+        match fs::read_to_string("incorrect.log") {
+            Ok(val) => {
+                if !val.contains(&date_time) {
+                    contents_for_log.push_str(&date_time);
+                }
+            },
+            Err(err) => {},
+        }
+        for (key,value) in tr_incorrect {
+            let mut element = String::new();
+            element.push('(');
+            element.push_str(&key.to_string());
+            element.push(',');
+            element.push_str(&value.len().to_string());
+            element.push(')');
+            contents_for_log.push_str(&element);
+        }
+
+        write!(fd.expect("file read error"),"{}",contents_for_log);
     }
 
     pub fn make_book(path:&String) -> Vec<Memo> {
@@ -494,6 +524,8 @@ pub mod memo {
 mod tests {
     use super::*;
     use std::io;
+    use std::fs::{self,File};
+    use chrono::{Local,DateTime};
 
     #[test]
     fn input_test() {
@@ -522,5 +554,27 @@ mod tests {
 
         println!("{:?}",tresult);
         println!("{:?}",tvec);
+    }
+    #[test]
+    fn test_fs(){
+        let now = Local::now();
+        let formatted = &format!("{}",now.format("%Y/%m/%d %H:%M"));
+        let contents = match fs::read_to_string("test2.txt"){
+            Ok(val) => val,
+            Err(err) =>String::new(),
+        };
+        let mut write_string = String::new();
+        if contents.contains(formatted) {
+            write_string.push_str("파일에 쓸내용");
+        }else {
+            write_string.push_str(&format!("{}\n{}",formatted,"파일에 쓸내용"));
+        }
+        // file write test
+        let mut fd = File::options().create(true).
+            append(true).open("test2.txt").expect("file open error");
+        match writeln!(fd,"{}",write_string) {
+            Ok(val) => {},
+            Err(err) => { println!( "{err}" ); },
+        }
     }
 }
