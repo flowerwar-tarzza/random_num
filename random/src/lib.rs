@@ -45,6 +45,7 @@ pub mod memo {
         Learn,
         Auto,
         SetRange,
+        IncorrectWord,
     }
     // word manager
     // indexing, start to end
@@ -84,7 +85,7 @@ pub mod memo {
             let mut stdout = stdout().into_raw_mode().unwrap();
 
             let book_info_string = format!("total memo: {}",self.total_memo);
-            let control_message = format!("(L)earn:(T)est:(S)et Range:(A)uto:(Q)uit");
+            let control_message = format!("(L)earn:(T)est:(S)et Range:(I)ncorrect:(A)uto:(Q)uit");
 
             'main: loop{
                 let head_message = self.make_head_message();
@@ -118,8 +119,49 @@ pub mod memo {
                             self.page_set_range();
                             let _ = stdout.activate_raw_mode();
                             break;},
+                        Key::Char('i') => {  self.page = Page::IncorrectWord;
+                            let _ = stdout.suspend_raw_mode();
+                            self.page_incorrent_word();
+                            let _ = stdout.activate_raw_mode();
+                            break;
+                        }
                         Key::Char('q') => { break 'main;},
                         _ => {println!("other key pressed!\r");},
+                    }
+                }
+            }
+        }
+        fn page_incorrent_word(&self) {
+            let mut stdout = stdout().into_raw_mode().unwrap();
+            let head_message = self.make_head_message();
+            let bottom_message = "q:quit,s:show detail";
+            let read_file= fs::read_to_string("incorrect.log").unwrap();
+            let logs:Vec<&str>= read_file.split('\n').collect();
+            let mut contents = String::new();
+            for line in &logs {
+                contents.push_str(line);
+                contents.push_str("\n\r");
+            }
+
+            //clear screen
+            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+            stdout.flush().unwrap();
+
+            'outter: loop {
+                let stdin = stdin();
+
+                write!(stdout,"{}\n\r",head_message).unwrap();
+                write!(stdout,"{}\n\r",contents).unwrap();
+                write!(stdout,"{}\n\r",bottom_message).unwrap();
+                stdout.flush().unwrap();
+                for c in stdin.keys() {
+                    match c.unwrap() {
+                        Key::Char('q') => {
+                            break 'outter;
+                        },
+                        Key::Char('s') => {
+                        },
+                        _ => {},
                     }
                 }
             }
@@ -251,6 +293,7 @@ pub mod memo {
                 Page::Learn => {"Learn page"},
                 Page::SetRange => {"Learn page"},
                 Page::Auto => {"Auto Next page"},
+                Page::IncorrectWord => "Incorrect Word page",
             };
             format!("{}:{}-({}:{})",current_page,self.file_name,self.i_start,self.i_end)
         }
@@ -273,7 +316,7 @@ pub mod memo {
         fn page_test(&mut self) {
             self.switch_all_on();
             //let mut tr_correct:HashMap<usize,Vec<&str>> = HashMap::new();
-            let mut tr_incorrect:HashMap<usize,Vec<&str>> = HashMap::new();
+            let mut tr_incorrect:HashMap<usize,Vec<String>> = HashMap::new();
 
             let head_message = self.make_head_message();
             let mut stdout = stdout().into_raw_mode().unwrap();
@@ -284,6 +327,8 @@ pub mod memo {
                                   ";
             let mut can_input = false;
             let mut reach_end = false;
+            let mut next_word = false;
+
             //shuffle indexs
             let mut rng = thread_rng();
             let mut shuffled_indexes:Vec<_> = (self.i_start..= self.i_end).into_iter().collect();
@@ -293,7 +338,8 @@ pub mod memo {
 
             self.i_current = shuffled_indexes.pop().unwrap();
             //key event , screen display
-            'outter: loop {
+            'outter:
+            loop {
                 let mut stdin = stdin();
 
                 if can_input && !reach_end {
@@ -302,25 +348,37 @@ pub mod memo {
                     stdout.flush().unwrap();
 
                     let _ = stdout.suspend_raw_mode();
-                    let input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
+                    let mut input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
                     // check the answer for the memo
                     // inert the result in test result maps:tr_correct,tr_incorrect
-                    if input_string.contains(&self.book[self.i_current].word) {
-                        test_result_message=":0!".to_string();
-                    }else {
-                        tr_incorrect.entry(self.i_current).or_insert(Vec::new()).push("x");
+
+                    if input_string.contains("next") { // 틀렸을때 다음으로..
+                        next_word = true;
+                        write_tr_incorrect(&mut tr_incorrect,&mut input_string,self.i_current);
                         test_result_message=":x!".to_string();
+                    }else {
+                        if input_string.contains(&self.book[self.i_current].word) {
+                            test_result_message=":0!".to_string();
+                            next_word = true;
+                        }else {
+                            write_tr_incorrect(&mut tr_incorrect,&mut input_string,self.i_current);
+                            test_result_message=":x!".to_string();
+                        }
                     }
-                    // next word index
-                    if shuffled_indexes.len() > 0  {
-                        self.i_current = shuffled_indexes.pop().unwrap();}
-                    else {
-                        test_result_message.push_str("reach end!");
-                        reach_end = true;
-                        save_incorrect_log(&tr_incorrect,self.i_start,self.i_end);
+
+                    // Next word
+                    if next_word {
+                        if shuffled_indexes.len() > 0 {
+                            self.i_current = shuffled_indexes.pop().unwrap();
+                        }else {
+                            test_result_message.push_str("reach end!");
+                            reach_end = true;
+                            save_incorrect_log(&tr_incorrect,self.i_start,self.i_end);
+                        }
                     }
                 }
+
                 //make output ----
                 let mut output = String::new();
                 let memo = &self.book[self.i_current];
@@ -333,6 +391,7 @@ pub mod memo {
                 if self.switch_example{
                     self.output_examples(&mut output,&memo);
                 }
+                test_result_message.push_str(&format!("{}",shuffled_indexes.len()));
                 write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
                 stdout.flush().unwrap();
                 write!(stdout,"{}\n\r",head_message).unwrap();
@@ -457,18 +516,19 @@ pub mod memo {
             }
         }
     }
-    fn save_incorrect_log(tr_incorrect:&HashMap<usize,Vec<&str>> ,i_start:usize,i_end:usize) {
+    fn save_incorrect_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize) {
         let fd = File::options().create(true).append(true).open("incorrect.log");
-        let mut date_time =format!("{}", Local::now().format("%Y/%m/%D %H:%M"));
+        let mut date_time =format!("{}", Local::now().format("%Y/%m/%d %H:%M"));
         date_time.push(':');
         let mut contents_for_log = String::new();
         match fs::read_to_string("incorrect.log") {
             Ok(val) => {
                 if !val.contains(&date_time) {
                     contents_for_log.push_str(&date_time);
+                    contents_for_log.push_str(&format!("range({},{}) ",i_start,i_end));
                 }
             },
-            Err(err) => {},
+            Err(_err) => {},
         }
         for (key,value) in tr_incorrect {
             let mut element = String::new();
@@ -476,13 +536,23 @@ pub mod memo {
             element.push_str(&key.to_string());
             element.push(',');
             element.push_str(&value.len().to_string());
-            element.push(')');
+            element.push('-');
+            for e in value {
+                element.push_str(e);
+            }
+            element.push_str(")");
             contents_for_log.push_str(&element);
         }
-
-        write!(fd.expect("file read error"),"{}",contents_for_log);
+        contents_for_log.push('\n');
+        write!(fd.expect("file read error"),"{}",contents_for_log).unwrap();
     }
 
+    fn write_tr_incorrect(tr_incorrect:&mut HashMap<usize,Vec<String>>,input_string:&mut String,i_current:usize){
+        input_string.push(',');//add delimiter
+        tr_incorrect.entry(i_current).
+        or_insert(Vec::new()).
+        push(input_string.clone());
+    }
     pub fn make_book(path:&String) -> Vec<Memo> {
         let read_file = match fs::read_to_string(path) {
             Ok(result) => result,
