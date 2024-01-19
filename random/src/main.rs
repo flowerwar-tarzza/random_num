@@ -1,4 +1,4 @@
-use random::memo::*;
+use random::memo::{self,*};
 use std::{env,env::Args};
 
 fn main() {
@@ -15,5 +15,6 @@ fn main() {
     let book = make_book(&file_name);
     let mut memo_manager = MemoManager::build(book,file_name);
 
-    memo_manager.run();
+    //memo_manager.run();
+    read_log("range");
 }
