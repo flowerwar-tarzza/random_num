@@ -45,7 +45,7 @@ pub mod memo {
         Learn,
         Auto,
         SetRange,
-        IncorrectWord,
+        OpenLog,
     }
     // word manager
     // indexing, start to end
@@ -86,7 +86,7 @@ pub mod memo {
             let mut stdout = stdout().into_raw_mode().unwrap();
 
             let book_info_string = format!("total memo: {}",self.total_memo);
-            let control_message = format!("(S)et Range:(L)earn:(T)est:(L)log:(A)uto:(Q)uit");
+            let control_message = format!("(S)et Range:(L)earn:(T)est:(O)pen log:(A)uto:(Q)uit");
 
             'main: loop{
                 let head_message = self.make_head_message();
@@ -120,7 +120,7 @@ pub mod memo {
                             self.page_set_range();
                             let _ = stdout.activate_raw_mode();
                             break;},
-                        Key::Char('l') => {  self.page = Page::IncorrectWord;
+                        Key::Char('o') => {  self.page = Page::OpenLog;
                             let _ = stdout.suspend_raw_mode();
                             self.page_log();
                             let _ = stdout.activate_raw_mode();
@@ -136,7 +136,10 @@ pub mod memo {
             let mut stdout = stdout().into_raw_mode().unwrap();
             let head_message = self.make_head_message();
             let bottom_message = "q:quit,s:show detail";
-            let read_file= fs::read_to_string("data.log").unwrap();
+            let read_file= match fs::read_to_string("data.log"){
+                Ok(val) => val,
+                Err(e) => return,
+            };
             let logs:Vec<&str>= read_file.split('\n').collect();
             let mut contents = String::new();
             for line in &logs {
@@ -435,7 +438,7 @@ pub mod memo {
                 Page::Learn => {"Learn page"},
                 Page::SetRange => {"Learn page"},
                 Page::Auto => {"Auto Next page"},
-                Page::IncorrectWord => "Incorrect Word page",
+                Page::OpenLog => "Word Log page",
             };
             format!("{}:{}-({}:{})",current_page,self.file_name,self.i_start,self.i_end)
         }
@@ -456,7 +459,7 @@ pub mod memo {
             self.switch_example =true;
         }
 
-       fn output_word(&self,output:&mut String,memo:&Memo){
+        fn output_word(&self,output:&mut String,memo:&Memo){
             // test mode , display_mode,
             // make output
             match self.display_mode {
@@ -520,40 +523,48 @@ pub mod memo {
             }
         }
     }
-    pub fn read_log(identifier:&str) -> String{
-        let log_all = fs::read_to_string("incorrect.log").unwrap();
+    pub fn read_log(identifier:&str,path:&str) -> Result<(usize,Vec<String>),String>{
+        //test function  : using incorrect.log // geniune thing : data.log
+        //
+        let log_all = match fs::read_to_string(path) {
+            Ok(val) => val,
+            Err(e) => return Err(e.to_string()),
+        };
         let logs:Vec<&str> = log_all.split('\n').collect();
 
-        //let filtered:Vec<_> = logs.iter().filter(|x| x.contains("range(0,69)"));
-        let filtered:Vec<_> = logs.iter().filter(|x| x.contains("range(0,69)")).collect();
-        for line in logs.iter() {
-            if line.contains("range(0,69)") { println!("true"); }
+        let selected:Vec<_> = logs.iter().filter(|x| x.contains(identifier)).collect();
+        if selected.len() > 1 {
+            return Err("Don't select confusing one for search line: datetime range(x,x)".to_string());
+        }else if selected.is_empty() {
+            return Err("Can't find match line!".to_string());
         }
-        println!("{:#?}",logs);
-        println!("{:#?}",filtered);
-        String::new() //dumy
+
+        // Get incorrect words and indices
+
+        let splited = selected[0].splitn(3,' ').collect::<Vec<_>>();
+        println!("{:#?}",splited);
+        Ok((1,vec!["test".to_string(),"test2".to_string()])) //dumy
     }
     fn write_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize) {
+
         let fd = File::options().create(true).append(true).open("data.log");
         let mut date_time =format!("{}", Local::now().format("%Y/%m/%d %H:%M"));
-        date_time.push(':');
+        date_time.push(' ');
         let mut contents_for_log = String::new();
         match fs::read_to_string("data.log") {
             Ok(val) => {
-                if !val.contains(&date_time) {
+                if !val.contains(&date_time) { //동시간 에 대한 처리
                     contents_for_log.push_str(&date_time);
-                    contents_for_log.push_str(&format!("range({},{}) ",i_start,i_end));
+                    contents_for_log.push_str(&format!(" range({},{}) ",i_start,i_end));
                 }
             },
-            Err(_err) => {},
+            Err(_err) => {}, // data.log 부재시 처리 불필요.  File::options().caeate속성
         }
         for (key,value) in tr_incorrect {
             let mut element = String::new();
             element.push('(');
             element.push_str(&key.to_string());
             element.push(',');
-            element.push_str(&value.len().to_string());
-            element.push('-');
             for e in value {
                 element.push_str(e);
             }
@@ -585,7 +596,7 @@ pub mod memo {
 
             let mut one_memo = Memo::build();
             let mut cols:Vec<_> = line.split('\t').collect();
-            one_memo.word = String::from(cols.remove(0));
+            one_memo.word = String::from(cols.remove(0).trim());//벡터 첫요소,공백문자 처리
             one_memo.pornounce = String::from(cols.remove(0));
 
             let mut flag_ex_sentence: bool = false;
@@ -609,9 +620,11 @@ pub mod memo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::memo;
     use std::io;
     use std::fs::{self,File};
     use chrono::{Local,DateTime};
+    use std::env::args;
 
     #[test]
     fn input_test() {
@@ -642,7 +655,7 @@ mod tests {
         println!("{:?}",tvec);
     }
     #[test]
-    fn test_fs(){
+    fn test_write_datetime(){
         let now = Local::now();
         let formatted = &format!("{}",now.format("%Y/%m/%d %H:%M"));
         let contents = match fs::read_to_string("test2.txt"){
@@ -661,6 +674,19 @@ mod tests {
         match writeln!(fd,"{}",write_string) {
             Ok(val) => {},
             Err(err) => { println!( "{err}" ); },
+        }
+    }
+    #[test]
+    fn read_log_for_search_info() {
+        //find necessary info to return caller
+
+        let identifier = args().nth(2).expect("no identifier");
+        let path = args().nth(3).expect("no file path");
+        println!("command line args::{:#?}",identifier);
+        let result = memo::read_log(&identifier,&path);
+        match result{
+            Ok(val) => println!("{:#?}",val),
+            Err(e) => println!("{}",e),
         }
     }
 }

@@ -15,6 +15,5 @@ fn main() {
     let book = make_book(&file_name);
     let mut memo_manager = MemoManager::build(book,file_name);
 
-    //memo_manager.run();
-    read_log("range");
+    memo_manager.run();
 }
