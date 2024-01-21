@@ -133,10 +133,12 @@ pub mod memo {
             }
         }
         fn page_log(&self) {
+            let file_path = "data.log";
             let mut stdout = stdout().into_raw_mode().unwrap();
+            let mut need_details = false;
             let head_message = self.make_head_message();
             let bottom_message = "q:quit,s:show detail";
-            let read_file= match fs::read_to_string("data.log"){
+            let read_file= match fs::read_to_string(file_path){
                 Ok(val) => val,
                 Err(e) => return,
             };
@@ -151,11 +153,46 @@ pub mod memo {
             write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
             stdout.flush().unwrap();
 
-            'outter: loop {
-                let stdin = stdin();
 
+            'outter: loop {
+                let mut stdin = stdin();
+
+                write!(stdout,"{} {}",clear::All,cursor::Goto(1,1)).unwrap();
                 write!(stdout,"{}\n\r",head_message).unwrap();
                 write!(stdout,"{}\n\r",contents).unwrap();
+                stdout.flush().unwrap();
+                // ---- detail input ---
+                if need_details {
+                    write!(stdout,"input detailed ");
+                    let _ = stdout.suspend_raw_mode().unwrap();
+                    stdout.flush().unwrap();
+                    let identifier = TermRead::read_line(&mut stdin).unwrap().unwrap();
+                    let _ = stdout.activate_raw_mode().unwrap();
+                    stdout.flush().unwrap();
+                    println!("{}\r",identifier);
+                    need_details = false;
+
+                    //-----get index wrongs------ -
+                    let mut index_wrongs:Vec<_> = Vec::new();
+                    match read_log(&identifier,file_path){
+                    //-> Result<Vec<(usize,Vec<String>)>,String>
+                        Ok(val) => index_wrongs = val,
+                        Err(e) => { println!("{}\n\r",e); },
+                    };
+
+                    //----display correct word / wrong answers -(usize,Vec<String>)---
+                    if !index_wrongs.is_empty() {
+                        for (index ,wrongs)in index_wrongs {
+                            write!(stdout,"{}:{}",self.book[index].word,
+                                   self.book[index].meanings[0]);
+                            for wrong in wrongs{
+                                write!(stdout,"-{}",wrong);
+                            }
+                            write!(stdout,"\n\r");
+                        }
+                        stdout.flush().unwrap();
+                    }
+                }
                 write!(stdout,"{}\n\r",bottom_message).unwrap();
                 stdout.flush().unwrap();
                 for c in stdin.keys() {
@@ -164,8 +201,10 @@ pub mod memo {
                             break 'outter;
                         },
                         Key::Char('s') => {
+                            need_details = true;
+                            break;
                         },
-                        _ => {},
+                        _ => {break;},
                     }
                 }
             }
@@ -327,7 +366,7 @@ pub mod memo {
                     let mut input_string = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
 
-                    // check the answer for the memo
+                    // check the answer for the memo.word
                     // inert the result in test result maps:tr_correct,tr_incorrect
                     if input_string.contains("next") { // 틀렸을때 다음으로..
                         next_word = true;
@@ -523,9 +562,7 @@ pub mod memo {
             }
         }
     }
-    pub fn read_log(identifier:&str,path:&str) -> Result<(usize,Vec<String>),String>{
-        //test function  : using incorrect.log // geniune thing : data.log
-        //
+    pub fn read_log(identifier:&str,path:&str) -> Result<Vec<(usize,Vec<String>)>,String> {
         let log_all = match fs::read_to_string(path) {
             Ok(val) => val,
             Err(e) => return Err(e.to_string()),
@@ -540,16 +577,38 @@ pub mod memo {
         }
 
         // Get incorrect words and indices
+        let splited = selected[0].splitn(4,' ').collect::<Vec<_>>();
 
-        let splited = selected[0].splitn(3,' ').collect::<Vec<_>>();
-        println!("{:#?}",splited);
-        Ok((1,vec!["test".to_string(),"test2".to_string()])) //dumy
+        //----리턴값 처리 ......
+        // 날짜시간,범위,틀린단어,
+        // splited vector 각요소 중 index, incorrect word 듀플
+        // 벡터로 저장 리턴함.
+        let incorrects = splited[3].split(")(").collect::<Vec<&str>>();
+        if incorrects[0] == "" {
+            return Err("It doesn't have wrong answer".to_string())
+        }
+        let mut result = Vec::new();
+        for element in &incorrects {
+
+            let mut one_idx_wrgs:(usize,Vec<String>) = (0,Vec::new());
+            let trimed_ele= element.trim_start_matches('(').trim_end_matches(')');
+            let mut index_wrongs:Vec<&str> = trimed_ele.split(',').collect();
+            one_idx_wrgs.0 = index_wrongs.remove(0).parse::<usize>().unwrap();
+            let _ = index_wrongs.pop();
+
+            for wrong in index_wrongs {
+                if wrong.contains("next") {break;}
+                one_idx_wrgs.1.push(wrong.to_string());
+            }
+            result.push(one_idx_wrgs.clone());
+        }
+
+        //Ok(vec![(1,vec!["test".to_string(),"test2".to_string()])]) //dumy
+        Ok(result)
     }
     fn write_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize) {
-
         let fd = File::options().create(true).append(true).open("data.log");
         let mut date_time =format!("{}", Local::now().format("%Y/%m/%d %H:%M"));
-        date_time.push(' ');
         let mut contents_for_log = String::new();
         match fs::read_to_string("data.log") {
             Ok(val) => {
@@ -576,8 +635,8 @@ pub mod memo {
     }
     fn write_test_result(tr_incorrect:&mut HashMap<usize,Vec<String>>,input_string:&mut String,i_current:usize){
         input_string.push(',');//add delimiter
-        tr_incorrect.entry(i_current).
-        or_insert(Vec::new()).
+        tr_incorrect.entry(i_current). //  current index as key
+        or_insert(Vec::new()).    // &mut return
         push(input_string.clone());
     }
     pub fn make_book(path:&String) -> Vec<Memo> {
