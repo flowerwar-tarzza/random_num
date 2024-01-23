@@ -15,7 +15,7 @@ pub mod memo {
     #[derive(Debug)]
     pub struct Memo{
         word:String,
-        pornounce:String,
+        pronunciation:String,
         meanings:Vec<String>,
         ex_sentence:Vec<String>,
     }
@@ -23,7 +23,7 @@ pub mod memo {
         fn build() -> Memo {
             Memo{
                 word : String::new(),
-                pornounce: String::new(),
+                pronunciation: String::new(),
                 meanings : Vec::new(),
                 ex_sentence: Vec::new(),
                 }
@@ -63,10 +63,12 @@ pub mod memo {
         display_mode:DisplayMode,
         page:Page,
         file_name:String,
-        //farest_index:Result<usize>,
+        farthest_index:usize,
     }
     impl MemoManager {
         pub fn build(book:Vec<Memo>,file_name:String) -> MemoManager{
+            let log_file = "data.log";
+            let farthest_index = read_farthest_index(log_file);
             let temp = MemoManager {
                 total_memo: book.len(),
                 i_start: 0,
@@ -79,13 +81,15 @@ pub mod memo {
                 display_mode:DisplayMode::ShowAll,
                 page:Page::Main,
                 file_name,
+                farthest_index,
             };
             temp
         }
         pub fn run(&mut self) {
             let mut stdout = stdout().into_raw_mode().unwrap();
 
-            let book_info_string = format!("total memo: {}",self.total_memo);
+            let book_info_string = format!("total memo: {},farthest_index: {}",
+                                           self.total_memo,self.farthest_index);
             let control_message = format!("(S)et Range:(L)earn:(T)est:(O)pen log:(A)uto:(Q)uit");
 
             'main: loop{
@@ -138,14 +142,50 @@ pub mod memo {
             let mut need_details = false;
             let head_message = self.make_head_message();
             let bottom_message = "q:quit,s:show detail";
-            let read_file= match fs::read_to_string(file_path){
+
+            let read_file = match fs::read_to_string(file_path){
                 Ok(val) => val,
                 Err(e) => return,
             };
+
             let logs:Vec<&str>= read_file.split('\n').collect();
             let mut contents = String::new();
-            for line in &logs {
-                contents.push_str(line);
+
+            for (i,line) in logs.iter().enumerate() {
+                let bk_line = line.splitn(4,' ').collect::<Vec<&str>>();
+                //println!("bk_line--->{:?}\r",bk_line);
+                if bk_line.len() > 3  {
+                    contents.push_str(&format!("{:>4}",(i.to_string() + ") "))); //add index )
+
+                    let mut wrongs =  "";
+                    for (i,col) in bk_line.into_iter().enumerate() { //cols:date time range wrongs
+                        if i == 3 {// 3 wrongs : escapte
+                            wrongs = col.trim_start_matches("(").trim_end_matches(",)");
+                            break;
+                        }
+                        contents.push_str(col);
+                        contents.push(' ');
+                    }
+                    if wrongs == "" {
+                        contents.push_str("\n\r");
+                        continue;
+                    }
+                    // ------ wrong inputs handle ------------
+                    let bk_wrongs = wrongs.split(")(").collect::<Vec<&str>>();
+                    for sp_idx_inputs in bk_wrongs {
+                        let mut sp_idx_input = sp_idx_inputs.split(',').collect::<Vec<&str>>();
+                        //println!("sp_idx_input--->{:?}\r",sp_idx_input);
+                        contents.push('(');
+                        contents.push_str(&(sp_idx_input[0].to_string() + "-"));//index
+                        contents.push_str(&sp_idx_input[1].to_string());//first wrong word
+                        let _ = sp_idx_input.pop();
+                        //println!("//sp_idx_input--->{:?}\r",sp_idx_input);
+                        if sp_idx_input.len() >= 3 {
+                            contents.push_str(",..."); //  ellipsis
+                        }
+                        contents.push(')');
+                    }
+                }
                 contents.push_str("\n\r");
             }
 
@@ -163,18 +203,18 @@ pub mod memo {
                 stdout.flush().unwrap();
                 // ---- detail input ---
                 if need_details {
-                    write!(stdout,"input detailed ");
+                    write!(stdout,"input line_index for detail information:\n\r");
                     let _ = stdout.suspend_raw_mode().unwrap();
                     stdout.flush().unwrap();
-                    let identifier = TermRead::read_line(&mut stdin).unwrap().unwrap();
+                    let line_index = TermRead::read_line(&mut stdin).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode().unwrap();
                     stdout.flush().unwrap();
-                    println!("{}\r",identifier);
+                    println!("{}\r",line_index);
                     need_details = false;
 
                     //-----get index wrongs------ -
                     let mut index_wrongs:Vec<_> = Vec::new();
-                    match read_log(&identifier,file_path){
+                    match read_log_indexed(&line_index,file_path){
                     //-> Result<Vec<(usize,Vec<String>)>,String>
                         Ok(val) => index_wrongs = val,
                         Err(e) => { println!("{}\n\r",e); },
@@ -182,11 +222,17 @@ pub mod memo {
 
                     //----display correct word / wrong answers -(usize,Vec<String>)---
                     if !index_wrongs.is_empty() {
+                        write!(stdout,"{}{}",clear::All,cursor::Goto(1,1));
+                        stdout.flush().unwrap();
                         for (index ,wrongs)in index_wrongs {
-                            write!(stdout,"{}:{}",self.book[index].word,
-                                   self.book[index].meanings[0]);
+                            write!(stdout,"o>{} [{}]: ",self.book[index].word,
+                                   self.book[index].pronunciation);
+                            for mean in &self.book[index].meanings {
+                                write!(stdout,":{}",mean);
+                            }
+                            write!(stdout,"\r\n");
                             for wrong in wrongs{
-                                write!(stdout,"-{}",wrong);
+                                write!(stdout,"x>{}\n\r",wrong);
                             }
                             write!(stdout,"\n\r");
                         }
@@ -270,17 +316,41 @@ pub mod memo {
         }
         fn page_set_range(&mut self) {
             let mut stdout =stdout().into_raw_mode().unwrap();
-            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-            write!(stdout,"{}{}\n\r",
-                   format!("range set({},{})",0,self.total_memo - 1),
-                   cursor::Show).unwrap();
-            stdout.flush().unwrap();
-            let _ = stdout.suspend_raw_mode(); // stdout : show  key input
-            let input = TermRead::read_line(&mut stdin()).unwrap().unwrap();
-            let _ = stdout.activate_raw_mode();
-            write!(stdout,"your input :{}\n\r",input).unwrap();
-            stdout.flush().unwrap();
-            self.set_indexs(input);
+            let mut head_message = String::new();
+            let mut body_message = String::new();
+            let mut input = String::new();
+            let mut set_input = false;
+            let end_message = "q:quit,o:open log,s:set_range";
+            'outter: loop {
+                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+
+                head_message = format!("Available range : {}-{}",0,self.total_memo - 1);
+
+                write!(stdout,"{}\n\r",head_message).unwrap();
+                write!(stdout,"{}\n\r",format!("farthest index({})",self.farthest_index)).unwrap();
+                write!(stdout,"{}\n\r",format!("set index({},{})",self.i_start,self.i_end)).unwrap();
+                if !set_input {write!(stdout,"{}\n\r",end_message).unwrap();}
+                stdout.flush().unwrap();
+
+                if set_input {
+                    write!(stdout,"new range:").unwrap();
+                    stdout.flush().unwrap();
+                    let _ = stdout.suspend_raw_mode(); // stdout : show  key input
+                    input = TermRead::read_line(&mut stdin()).unwrap().unwrap();
+                    let _ = stdout.activate_raw_mode();
+                    //write!(stdout,"your input :{}\n\r",input).unwrap();
+                    self.set_indexs(input);
+                    set_input= false;
+                    continue;
+                }
+                for c in stdin().keys() {
+                    match c.unwrap() {
+                        Key::Char('q') => { break 'outter; },
+                        Key::Char('s') => { set_input = true; break; },
+                        _ => {break;},
+                    }
+                }
+            }
         }
         fn page_auto(&mut self) {
             let mut in_buff = async_stdin().bytes();
@@ -513,7 +583,7 @@ pub mod memo {
                     output.push_str(&format!("{} \n\r",memo.word));
                 },
                 DisplayMode::ShowAll => {
-                    output.push_str(&format!("{} [{}]\n\r",memo.word,memo.pornounce));
+                    output.push_str(&format!("{} [{}]\n\r",memo.word,memo.pronunciation));
                 },
                 _ => {},
             }
@@ -562,22 +632,28 @@ pub mod memo {
             }
         }
     }
-    pub fn read_log(identifier:&str,path:&str) -> Result<Vec<(usize,Vec<String>)>,String> {
+    pub fn read_log_indexed(line_index:&str,path:&str) -> Result<Vec<(usize,Vec<String>)>,String> {
         let log_all = match fs::read_to_string(path) {
             Ok(val) => val,
             Err(e) => return Err(e.to_string()),
         };
-        let logs:Vec<&str> = log_all.split('\n').collect();
+        let mut logs:Vec<&str> = log_all.split('\n').collect();
+        let _ = logs.pop(); // eleminate last ""
 
-        let selected:Vec<_> = logs.iter().filter(|x| x.contains(identifier)).collect();
-        if selected.len() > 1 {
-            return Err("Don't select confusing one for search line: datetime range(x,x)".to_string());
-        }else if selected.is_empty() {
-            return Err("Can't find match line!".to_string());
-        }
+        let index = match line_index.parse::<usize>(){
+            Ok(val) => {
+                if val >= logs.len() {
+                    logs.len() - 1
+                }else {
+                    val
+                }
+            },
+            Err(e) => return Err(format!("inde error: {}",e)),
+        };
+        let selected = logs[index];
 
         // Get incorrect words and indices
-        let splited = selected[0].splitn(4,' ').collect::<Vec<_>>();
+        let splited = selected.splitn(4,' ').collect::<Vec<_>>();
 
         //----리턴값 처리 ......
         // 날짜시간,범위,틀린단어,
@@ -605,6 +681,27 @@ pub mod memo {
 
         //Ok(vec![(1,vec!["test".to_string(),"test2".to_string()])]) //dumy
         Ok(result)
+    }
+    pub fn read_farthest_index(file_path:&str) -> usize{
+        let contents = fs::read_to_string(file_path).unwrap();
+
+        //println!("{:}",contents);
+        let mut v_lines = contents.split('\n').collect::<Vec<&str>>();
+        let _ = v_lines.pop();
+        //println!("v_lines--->{:#?}",v_lines);
+        let mut farthest_index = 0;
+        for line in v_lines {
+            let range = line.split("range").collect::<Vec<&str>>()[1]
+                .split(' ').collect::<Vec<&str>>()[0]
+                .trim_start_matches("(").trim_end_matches(")")
+                .split(',').collect::<Vec<&str>>();
+            println!("range -->{:?}",range);
+            let index = range[1].parse::<usize>().unwrap();
+            if farthest_index < index {
+                farthest_index = index;
+            }
+        }
+        farthest_index
     }
     fn write_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize) {
         let fd = File::options().create(true).append(true).open("data.log");
@@ -656,7 +753,7 @@ pub mod memo {
             let mut one_memo = Memo::build();
             let mut cols:Vec<_> = line.split('\t').collect();
             one_memo.word = String::from(cols.remove(0).trim());//벡터 첫요소,공백문자 처리
-            one_memo.pornounce = String::from(cols.remove(0));
+            one_memo.pronunciation = String::from(cols.remove(0));
 
             let mut flag_ex_sentence: bool = false;
             for col in cols {
@@ -736,16 +833,23 @@ mod tests {
         }
     }
     #[test]
-    fn read_log_for_search_info() {
+    fn read_log_indexed_for_search_info() {
         //find necessary info to return caller
 
-        let identifier = args().nth(2).expect("no identifier");
+        let line_index = args().nth(2).expect("no line_index");
         let path = args().nth(3).expect("no file path");
-        println!("command line args::{:#?}",identifier);
-        let result = memo::read_log(&identifier,&path);
+        println!("command line args::{:#?}",line_index);
+        let result = memo::read_log_indexed(&line_index,&path);
         match result{
             Ok(val) => println!("{:#?}",val),
             Err(e) => println!("{}",e),
         }
+    }
+    #[test]
+    fn read_farthest_index(){
+        let mut args = args();
+        let file_path = args.nth(2).unwrap();
+        let index = memo::read_farthest_index(&file_path);
+        println!("test: fn read_farthest====>{}",index);
     }
 }
