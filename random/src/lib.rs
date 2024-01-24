@@ -69,11 +69,18 @@ pub mod memo {
         pub fn build(book:Vec<Memo>,file_name:String) -> MemoManager{
             let log_file = "data.log";
             let farthest_index = read_farthest_index(log_file);
+            let i_start = farthest_index + 1;
+            let i_current = i_start;
+            let i_end = if  i_start + 9 > book.len() - 1 {
+                book.len() - 1
+            }else {
+                i_start + 9
+            };
             let temp = MemoManager {
                 total_memo: book.len(),
-                i_start: 0,
-                i_current: 0,
-                i_end: book.len() - 1,
+                i_start,
+                i_current,
+                i_end,
                 book,
                 switch_word:true,
                 switch_mean:true,
@@ -141,7 +148,7 @@ pub mod memo {
             let mut stdout = stdout().into_raw_mode().unwrap();
             let mut need_details = false;
             let head_message = self.make_head_message();
-            let bottom_message = "q:quit,s:show detail";
+            let bottom_message = "B:Go back,S:show detail";
 
             let read_file = match fs::read_to_string(file_path){
                 Ok(val) => val,
@@ -243,7 +250,7 @@ pub mod memo {
                 stdout.flush().unwrap();
                 for c in stdin.keys() {
                     match c.unwrap() {
-                        Key::Char('q') => {
+                        Key::Char('b') => {
                             break 'outter;
                         },
                         Key::Char('s') => {
@@ -258,7 +265,7 @@ pub mod memo {
         fn page_learn(&mut self) {
             self.i_current = self.i_start;
             let head_message = self.make_head_message();
-            let bottom_message = "[N]Next,[p]previous,[w][m][e]toggle,[q]Quit\n\r";
+            let bottom_message = "[B]Go back,[N]Next word,[p]Prev word,[w][m][e]toggle\n\r";
 
             let mut stdout = io::stdout().into_raw_mode().unwrap();
             'outter: loop {
@@ -296,7 +303,7 @@ pub mod memo {
                                 self.i_current -= 1
                             }
                         },
-                        Key::Char('q') => {
+                        Key::Char('b') => {
                             self.page = Page::Main;
                             break 'outter
                         },
@@ -319,8 +326,8 @@ pub mod memo {
             let mut head_message = String::new();
             let mut body_message = String::new();
             let mut input = String::new();
-            let mut set_input = false;
-            let end_message = "q:quit,o:open log,s:set_range";
+            let mut set_range = false;
+            let end_message = "B:Go Back,s:set_range,r:recommand for next learn ";
             'outter: loop {
                 write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
 
@@ -329,24 +336,38 @@ pub mod memo {
                 write!(stdout,"{}\n\r",head_message).unwrap();
                 write!(stdout,"{}\n\r",format!("farthest index({})",self.farthest_index)).unwrap();
                 write!(stdout,"{}\n\r",format!("set index({},{})",self.i_start,self.i_end)).unwrap();
-                if !set_input {write!(stdout,"{}\n\r",end_message).unwrap();}
+                if !set_range {write!(stdout,"{}\n\r",end_message).unwrap();}
                 stdout.flush().unwrap();
 
-                if set_input {
+                if set_range {
                     write!(stdout,"new range:").unwrap();
                     stdout.flush().unwrap();
                     let _ = stdout.suspend_raw_mode(); // stdout : show  key input
                     input = TermRead::read_line(&mut stdin()).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
-                    //write!(stdout,"your input :{}\n\r",input).unwrap();
-                    self.set_indexs(input);
-                    set_input= false;
+                    if input == "" { set_range = false; continue; } //empty input: go out user in
+                    if !self.set_indexs(input) {
+                        writeln!(stdout,"incorrect input:(num,num)").unwrap();
+                        stdout.flush().unwrap();
+                        thread::sleep(Duration::from_secs(1));
+                        continue;
+                    }
+                    set_range = false;
                     continue;
                 }
                 for c in stdin().keys() {
                     match c.unwrap() {
-                        Key::Char('q') => { break 'outter; },
-                        Key::Char('s') => { set_input = true; break; },
+                        Key::Char('b') => { break 'outter; },
+                        Key::Char('s') => { set_range = true; break; },
+                        Key::Char('r') => {
+                            self.i_start = self.farthest_index + 1;
+                            self.i_current = self.i_start;
+                            self.i_end = if self.i_start + 9 > self.total_memo - 1{
+                                self.total_memo - 1
+                            }else {
+                                self.i_start + 9
+                            };
+                            break; },
                         _ => {break;},
                     }
                 }
@@ -405,7 +426,7 @@ pub mod memo {
 
             let head_message = self.make_head_message();
             let mut stdout = stdout().into_raw_mode().unwrap();
-            let bottom_message = "[q]Quit,[r]:retry,[Enter]:answer,\n\r\
+            let bottom_message = "[B]Go back,[Enter]:answer,\n\r\
                                   [s]:switch test mode (word <-> mean),\
                                   [h]:hint switch,\
                                   [x]:show incorrect answer\n\r\
@@ -453,7 +474,7 @@ pub mod memo {
                         }
                     }
 
-                    // Next word
+                    // Next word or reach end.
                     if next_word {
                         if shuffled_indexes.len() > 0 {
                             self.i_current = shuffled_indexes.pop().unwrap();
@@ -461,6 +482,7 @@ pub mod memo {
                             test_result_message.push_str("reach end!");
                             reach_end = true;
                             write_log(&tr_incorrect,self.i_start,self.i_end);
+                            self.farthest_index = self.i_end;
                         }
                     }
                 }
@@ -490,7 +512,7 @@ pub mod memo {
 
                 for c in stdin.keys() {
                     match c.unwrap() {
-                        Key::Char('q') => {
+                        Key::Char('b') => {
                             self.display_mode = DisplayMode::ShowAll;
                             break 'outter;
                         },
@@ -539,7 +561,6 @@ pub mod memo {
                 }
             }
         }
-
         fn make_head_message(&self) ->String{
             let current_page = match self.page {
                 Page::Main => {"Main Page"},
@@ -551,23 +572,28 @@ pub mod memo {
             };
             format!("{}:{}-({}:{})",current_page,self.file_name,self.i_start,self.i_end)
         }
-        fn set_indexs(&mut self,input:String) { // set index range (start, end)
+        fn set_indexs(&mut self,input:String) -> bool{ // set index range (start, end)
             let v_inputs:Vec<_> = input.trim().split(',').collect();
-            self.i_start = v_inputs[0].parse::<usize>().unwrap();
-            self.i_end = v_inputs[1].parse::<usize>().unwrap();
+            self.i_start = match v_inputs[0].parse::<usize>(){
+                Ok(val) => val,
+                Err(e) => return false,
+            };
+            self.i_end = match v_inputs[1].parse::<usize>(){
+                Ok(val) => val,
+                Err(e) => return false,
+            };
             self.i_current = self.i_start;
-            //validate input to iszie
+            //validate input to uszie
             if self.i_end > self.total_memo - 1 {
-                self.i_end %= self.total_memo;
+                self.i_end = self.total_memo - 1;
             }
+            true
         }
-
         fn switch_all_on(&mut self) {
             self.switch_word =true;
             self.switch_mean =true;
             self.switch_example =true;
         }
-
         fn output_word(&self,output:&mut String,memo:&Memo){
             // test mode , display_mode,
             // make output
@@ -612,8 +638,23 @@ pub mod memo {
             let concealed_word = String::from("?".repeat(memo.word.len()));
             match self.display_mode {
                 DisplayMode::TestWordByBoth | DisplayMode::TestWordByExample => {
+
                     for e in &memo.ex_sentence{
-                        let concealed_example = e.replace(&memo.word,&concealed_word);
+                        // fixing incorrect replace for uppercase
+                        let mut indices_uppers:Vec<usize> = Vec::new();
+                        for (i,c) in e.char_indices() {
+                            if c.is_uppercase() { indices_uppers.push(i); }
+                        }
+                        let lowercase = e.to_lowercase();
+                        let mut concealed_example = lowercase.replace(&memo.word,&concealed_word);
+                        // restore upper case
+                        unsafe {
+                            let bytes = concealed_example.as_bytes_mut();
+                            for i in indices_uppers {
+                                if bytes[i] == b'?' { continue;}
+                                bytes[i] = bytes[i] - (b'a' - b'A');
+                            }
+                        }
                         output.push_str(&format!("{}\n\r",concealed_example));
                     }
                     let _ = output.trim();
@@ -665,7 +706,6 @@ pub mod memo {
         }
         let mut result = Vec::new();
         for element in &incorrects {
-
             let mut one_idx_wrgs:(usize,Vec<String>) = (0,Vec::new());
             let trimed_ele= element.trim_start_matches('(').trim_end_matches(')');
             let mut index_wrongs:Vec<&str> = trimed_ele.split(',').collect();
@@ -683,19 +723,20 @@ pub mod memo {
         Ok(result)
     }
     pub fn read_farthest_index(file_path:&str) -> usize{
-        let contents = fs::read_to_string(file_path).unwrap();
+        let contents = match fs::read_to_string(file_path){
+            Ok(val) => val,
+            Err(e) => return 0, // file read err
+        };
 
-        //println!("{:}",contents);
         let mut v_lines = contents.split('\n').collect::<Vec<&str>>();
         let _ = v_lines.pop();
-        //println!("v_lines--->{:#?}",v_lines);
+
         let mut farthest_index = 0;
         for line in v_lines {
             let range = line.split("range").collect::<Vec<&str>>()[1]
                 .split(' ').collect::<Vec<&str>>()[0]
                 .trim_start_matches("(").trim_end_matches(")")
                 .split(',').collect::<Vec<&str>>();
-            println!("range -->{:?}",range);
             let index = range[1].parse::<usize>().unwrap();
             if farthest_index < index {
                 farthest_index = index;
@@ -852,4 +893,35 @@ mod tests {
         let index = memo::read_farthest_index(&file_path);
         println!("test: fn read_farthest====>{}",index);
     }
+    #[test]
+    fn conceal_example() {
+
+        let word = "modest";
+        let concealed_word = "?".repeat(word.len());
+        let lower = "Modest people Do not hold their heads high, even when they remain at the top of their fields.";
+        let mut indices = Vec::new();
+        for (i,e) in lower.char_indices() {
+            if e.is_uppercase() {indices.push(i);  }
+        }
+
+        let mut lower2 = lower.to_lowercase();
+        let mut result = lower2.replace(word,&concealed_word);
+
+        println!("word {}:------------>{}",word,concealed_word);
+        println!("after replace:-lower2----------->{}",result);
+        println!("-indices----------->{:?}",indices);
+
+        //panic!("look at this");
+        unsafe{
+            let bytes = result.as_bytes_mut();
+            for i in indices{
+                if bytes[i] != b'?' {
+                    bytes[i] = bytes[i] - (b'a'- b'A');
+                }
+            }
+        };
+        //println!("{}",std::str::from_utf8(example).unwrap());
+        println!("after uppercase :-reult-------->{}",result);
+    }
+
 }
