@@ -1,4 +1,4 @@
-use random::memo::{self,*};
+use random::memo::*;
 use std::{env,env::Args};
 
 fn main() {

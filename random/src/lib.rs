@@ -1,10 +1,10 @@
 use std::{thread,time::Duration};
 use std::fs::{self,File};
 use std::io::{self,Write,stdin,stdout,Read};
-use termion::{clear,cursor,cursor::DetectCursorPos,async_stdin};
+use termion::{clear,cursor,async_stdin};
 use termion::{event::Key,input::TermRead,raw::IntoRawMode};
 use std::collections::HashMap;
-use chrono::{Local,DateTime};
+use chrono::{Local};
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -102,10 +102,10 @@ pub mod memo {
             'main: loop{
                 let head_message = self.make_head_message();
                 let stdin = stdin();
-                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                write!(stdout,"{}\n\r",head_message).unwrap();
-                write!(stdout,"{}\n\r",book_info_string).unwrap();
-                write!(stdout,"{}\n\r",control_message).unwrap();
+                let _result = write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                let _result = write!(stdout,"{}\n\r",head_message).unwrap();
+                let _result = write!(stdout,"{}\n\r",book_info_string).unwrap();
+                let _result = write!(stdout,"{}\n\r",control_message).unwrap();
                 stdout.flush().unwrap();
 
                 for c in stdin.keys() {
@@ -152,7 +152,7 @@ pub mod memo {
 
             let read_file = match fs::read_to_string(file_path){
                 Ok(val) => val,
-                Err(e) => return,
+                Err(_e) => return,
             };
 
             let logs:Vec<&str>= read_file.split('\n').collect();
@@ -197,20 +197,20 @@ pub mod memo {
             }
 
             //clear screen
-            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+            let _result = write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
             stdout.flush().unwrap();
 
 
             'outter: loop {
                 let mut stdin = stdin();
 
-                write!(stdout,"{} {}",clear::All,cursor::Goto(1,1)).unwrap();
-                write!(stdout,"{}\n\r",head_message).unwrap();
-                write!(stdout,"{}\n\r",contents).unwrap();
+                let _result = write!(stdout,"{} {}",clear::All,cursor::Goto(1,1)).unwrap();
+                let _result = write!(stdout,"{}\n\r",head_message).unwrap();
+                let _result = write!(stdout,"{}\n\r",contents).unwrap();
                 stdout.flush().unwrap();
                 // ---- detail input ---
                 if need_details {
-                    write!(stdout,"input line_index for detail information:\n\r");
+                    let _result = write!(stdout,"input line_index for detail information:\n\r");
                     let _ = stdout.suspend_raw_mode().unwrap();
                     stdout.flush().unwrap();
                     let line_index = TermRead::read_line(&mut stdin).unwrap().unwrap();
@@ -229,24 +229,24 @@ pub mod memo {
 
                     //----display correct word / wrong answers -(usize,Vec<String>)---
                     if !index_wrongs.is_empty() {
-                        write!(stdout,"{}{}",clear::All,cursor::Goto(1,1));
+                        let _result = write!(stdout,"{}{}",clear::All,cursor::Goto(1,1));
                         stdout.flush().unwrap();
                         for (index ,wrongs)in index_wrongs {
-                            write!(stdout,"o>{} [{}]: ",self.book[index].word,
+                            let _result = write!(stdout,"o>{} [{}]: ",self.book[index].word,
                                    self.book[index].pronunciation);
                             for mean in &self.book[index].meanings {
-                                write!(stdout,":{}",mean);
+                                let _result = write!(stdout,":{}",mean);
                             }
-                            write!(stdout,"\r\n");
+                            let _result = write!(stdout,"\r\n");
                             for wrong in wrongs{
-                                write!(stdout,"x>{}\n\r",wrong);
+                                let _result = write!(stdout,"x>{}\n\r",wrong);
                             }
-                            write!(stdout,"\n\r");
+                            let _result = write!(stdout,"\n\r");
                         }
                         stdout.flush().unwrap();
                     }
                 }
-                write!(stdout,"{}\n\r",bottom_message).unwrap();
+                let _result = write!(stdout,"{}\n\r",bottom_message).unwrap();
                 stdout.flush().unwrap();
                 for c in stdin.keys() {
                     match c.unwrap() {
@@ -264,12 +264,13 @@ pub mod memo {
         }
         fn page_learn(&mut self) {
             self.i_current = self.i_start;
+            let mut typein = false;
             let head_message = self.make_head_message();
-            let bottom_message = "[B]Go back,[N]Next word,[p]Prev word,[w][m][e]toggle\n\r";
-
+            let bottom_message = "[B]Go back,[T]type in,\
+                                  [N]Next word,[p]Prev word,[w][m][e]Toggle\n\r";
             let mut stdout = io::stdout().into_raw_mode().unwrap();
             'outter: loop {
-                let stdin = stdin();
+                let mut stdin = stdin();
                //make output ----
                 let mut output = String::new();
                 let memo = &self.book[self.i_current];
@@ -282,13 +283,34 @@ pub mod memo {
                 if self.switch_example{
                     self.output_examples(&mut output,&memo);
                 }
-                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
-                write!(stdout,"{}\n\r",head_message).unwrap();
-                write!(stdout,"{}\n\r",output).unwrap();
-                write!(stdout,"[{}]\n\r",self.i_current).unwrap();
-                write!(stdout,"{}rakge({},{})",
-                    bottom_message,self.i_start,self.i_end).unwrap();
+                let _= write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                let _= write!(stdout,"{}\n\r",head_message).unwrap();
+                let _= write!(stdout,"{}",output).unwrap();
+                let _= write!(stdout,"{}:",self.i_current).unwrap();
+                if !typein {
+                    let _= write!(stdout,"{}", bottom_message).unwrap();
+                }
                 stdout.flush().unwrap();
+                // type in mode : word practice by typing
+                if typein {
+                    let _ = write!(stdout,"type in \"exit\" to go back:");
+                    stdout.flush().unwrap();
+                    stdout.suspend_raw_mode();
+                    let input = TermRead::read_line(&mut stdin)
+                        .unwrap().unwrap();
+                    stdout.activate_raw_mode();
+                    if input == "exit" {typein = false; continue;}
+                    if input == self.book[self.i_current].word {
+                        self.i_current += 1;
+                        if self.i_current > self.i_end { //reach end
+                           self.i_current = self.i_end;
+                           typein = false;
+                        }
+                    }else {
+                        thread::sleep(Duration::from_millis(500));
+                    }
+                    continue ;
+                }
 
                 // ==== key input control
                 for c in stdin.keys() {
@@ -310,10 +332,12 @@ pub mod memo {
                         Key::Char('w') => self.switch_word = !self.switch_word,
                         Key::Char('m') => self.switch_mean = !self.switch_mean,
                         Key::Char('e') => self.switch_example = !self.switch_example,
+                        Key::Char('t') => typein = true,
                         _ => {
-                            write!(stdout,"your input : other key\n\r").unwrap();
+                            let _result = write!(stdout,"your input : other key\n\r").unwrap();
+                            thread::sleep(Duration::from_secs(2));
                             stdout.flush().unwrap();
-                            continue;
+                            continue 'outter;
                         },
                     }
                     break;
@@ -323,27 +347,24 @@ pub mod memo {
         }
         fn page_set_range(&mut self) {
             let mut stdout =stdout().into_raw_mode().unwrap();
-            let mut head_message = String::new();
-            let mut body_message = String::new();
-            let mut input = String::new();
             let mut set_range = false;
             let end_message = "B:Go Back,s:set_range,r:recommand for next learn ";
             'outter: loop {
-                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                let _result = write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
 
-                head_message = format!("Available range : {}-{}",0,self.total_memo - 1);
+                let head_message = format!("Available range : {}-{}",0,self.total_memo - 1);
 
-                write!(stdout,"{}\n\r",head_message).unwrap();
-                write!(stdout,"{}\n\r",format!("farthest index({})",self.farthest_index)).unwrap();
-                write!(stdout,"{}\n\r",format!("set index({},{})",self.i_start,self.i_end)).unwrap();
+                let _result = write!(stdout,"{}\n\r",head_message).unwrap();
+                let _result = write!(stdout,"{}\n\r",format!("farthest index({})",self.farthest_index)).unwrap();
+                let _result = write!(stdout,"{}\n\r",format!("set index({},{})",self.i_start,self.i_end)).unwrap();
                 if !set_range {write!(stdout,"{}\n\r",end_message).unwrap();}
                 stdout.flush().unwrap();
 
                 if set_range {
-                    write!(stdout,"new range:").unwrap();
+                    let _result = write!(stdout,"new range:").unwrap();
                     stdout.flush().unwrap();
                     let _ = stdout.suspend_raw_mode(); // stdout : show  key input
-                    input = TermRead::read_line(&mut stdin()).unwrap().unwrap();
+                    let input = TermRead::read_line(&mut stdin()).unwrap().unwrap();
                     let _ = stdout.activate_raw_mode();
                     if input == "" { set_range = false; continue; } //empty input: go out user in
                     if !self.set_indexs(input) {
@@ -377,7 +398,7 @@ pub mod memo {
             let mut in_buff = async_stdin().bytes();
             let mut stdout = stdout().lock().into_raw_mode().unwrap();
 
-            write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap(); stdout.flush().unwrap();
+            let _result = write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap(); stdout.flush().unwrap();
 
             let buttom_message = "Exit Auto Mode : [q] / toggle switch : [w,m,e]/ replay :[r] ";
             loop {
@@ -408,15 +429,15 @@ pub mod memo {
                     self.output_examples(&mut output,&memo);
                 }
                 thread::sleep(Duration::from_millis(1000));
-                write!(stdout,"{}{}\n\r",clear::All,cursor::Goto(1,1)).unwrap();
-                write!(stdout,"{}\n\r",output).unwrap();
-                write!(stdout,"{}\n\r",buttom_message).unwrap();
+                let _result = write!(stdout,"{}{}\n\r",clear::All,cursor::Goto(1,1)).unwrap();
+                let _result = write!(stdout,"{}\n\r",output).unwrap();
+                let _result = write!(stdout,"{}\n\r",buttom_message).unwrap();
                 stdout.flush().unwrap();
 
                 // index for next word
                 if self.i_current < self.i_end { self.i_current += 1; }
                 else {
-                    write!(stdout,"reach end \n\r").unwrap();
+                    let _result = write!(stdout,"reach end \n\r").unwrap();
                 }
             }
         }
@@ -433,7 +454,6 @@ pub mod memo {
                                   ";
             let mut can_answer = false;
             let mut reach_end = false;
-            let mut next_word = false;
 
             //shuffle indexs
             let mut rng = thread_rng();
@@ -447,10 +467,11 @@ pub mod memo {
             'outter:
             loop {
                 let mut stdin = stdin();
+                let mut next_word = false;
 
                 if can_answer && !reach_end {
                     can_answer = false;
-                    write!(stdout,"\n\r\"Next\" for next word!\n\ranwser me:").unwrap();
+                    let _result = write!(stdout,"\n\r\"Next\" for next word!\n\ranwser me:").unwrap();
                     stdout.flush().unwrap();
 
                     let _ = stdout.suspend_raw_mode();
@@ -464,7 +485,7 @@ pub mod memo {
                         write_test_result(&mut tr_incorrect,&mut input_string,self.i_current);
                         test_result_message=":x!".to_string();
                     }else {
-                        if input_string.contains(&self.book[self.i_current].word) {
+                        if input_string.contains(&self.book[self.i_current].word.to_lowercase()) {
                             test_result_message=":0!".to_string();
                             next_word = true;
                         }else {
@@ -474,7 +495,7 @@ pub mod memo {
                         }
                     }
 
-                    // Next word or reach end.
+                    // Next word or reach end index.
                     if next_word {
                         if shuffled_indexes.len() > 0 {
                             self.i_current = shuffled_indexes.pop().unwrap();
@@ -482,7 +503,9 @@ pub mod memo {
                             test_result_message.push_str("reach end!");
                             reach_end = true;
                             write_log(&tr_incorrect,self.i_start,self.i_end);
-                            self.farthest_index = self.i_end;
+                            if self.farthest_index < self.i_end {
+                                self.farthest_index = self.i_end;
+                            }
                         }
                     }
                 }
@@ -500,13 +523,13 @@ pub mod memo {
                     self.output_examples(&mut output,&memo);
                 }
                 test_result_message.push_str(&format!("{}",shuffled_indexes.len()));
-                write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
+                let _result = write!(stdout,"{}{}",clear::All,cursor::Goto(1,1)).unwrap();
                 stdout.flush().unwrap();
-                write!(stdout,"{}\n\r",head_message).unwrap();
-                write!(stdout,"{}",output).unwrap();
-                write!(stdout,"[{}]{}\n\r{}",self.i_current,test_result_message,bottom_message).unwrap();
+                let _result = write!(stdout,"{}\n\r",head_message).unwrap();
+                let _result = write!(stdout,"{}",output).unwrap();
+                let _result = write!(stdout,"[{}]{}\n\r{}",self.i_current,test_result_message,bottom_message).unwrap();
                 if !reach_end {
-                    write!(stdout,"press enter to answer!:").unwrap();
+                    let _result = write!(stdout,"press enter to answer!:").unwrap();
                 }
                 stdout.flush().unwrap();
 
@@ -576,11 +599,11 @@ pub mod memo {
             let v_inputs:Vec<_> = input.trim().split(',').collect();
             self.i_start = match v_inputs[0].parse::<usize>(){
                 Ok(val) => val,
-                Err(e) => return false,
+                Err(_e) => return false,
             };
             self.i_end = match v_inputs[1].parse::<usize>(){
                 Ok(val) => val,
-                Err(e) => return false,
+                Err(_e) => return false,
             };
             self.i_current = self.i_start;
             //validate input to uszie
@@ -725,7 +748,7 @@ pub mod memo {
     pub fn read_farthest_index(file_path:&str) -> usize{
         let contents = match fs::read_to_string(file_path){
             Ok(val) => val,
-            Err(e) => return 0, // file read err
+            Err(_e) => return 0, // file read err
         };
 
         let mut v_lines = contents.split('\n').collect::<Vec<&str>>();
@@ -746,7 +769,7 @@ pub mod memo {
     }
     fn write_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize) {
         let fd = File::options().create(true).append(true).open("data.log");
-        let mut date_time =format!("{}", Local::now().format("%Y/%m/%d %H:%M"));
+        let date_time =format!("{}", Local::now().format("%Y/%m/%d %H:%M"));
         let mut contents_for_log = String::new();
         match fs::read_to_string("data.log") {
             Ok(val) => {
@@ -769,7 +792,7 @@ pub mod memo {
             contents_for_log.push_str(&element);
         }
         contents_for_log.push('\n');
-        write!(fd.expect("file read error"),"{}",contents_for_log).unwrap();
+        let _result = write!(fd.expect("file read error"),"{}",contents_for_log).unwrap();
     }
     fn write_test_result(tr_incorrect:&mut HashMap<usize,Vec<String>>,input_string:&mut String,i_current:usize){
         input_string.push(',');//add delimiter
@@ -895,7 +918,6 @@ mod tests {
     }
     #[test]
     fn conceal_example() {
-
         let word = "modest";
         let concealed_word = "?".repeat(word.len());
         let lower = "Modest people Do not hold their heads high, even when they remain at the top of their fields.";
