@@ -51,13 +51,14 @@ pub struct MemoManager{
     display_mode:DisplayMode,
     page:Page,
     file_name:String,
-    farthest_index:usize,
+    i_farthest:usize,
 }
+
 impl MemoManager {
     pub fn build(book:Vec<Memo>,file_name:String) -> MemoManager{
         let log_file = "data.log";
-        let farthest_index = read_farthest_index(log_file);
-        let i_start = farthest_index + 1;
+        let i_farthest = read_i_farthest(log_file);
+        let i_start = i_farthest + 1;
         let i_current = i_start;
         let i_end = if  i_start + 9 > book.len() - 1 {
             book.len() - 1
@@ -76,7 +77,7 @@ impl MemoManager {
             display_mode:DisplayMode::ShowAll,
             page:Page::Main,
             file_name,
-            farthest_index,
+            i_farthest,
         };
         temp
     }
@@ -84,8 +85,8 @@ impl MemoManager {
         self.page = Page::Main;
         let mut stdout = stdout().into_raw_mode().unwrap();
 
-        let book_info_string = format!("total memo:{} ,farthest_index:{}",
-                                       self.total_memo,self.farthest_index);
+        let book_info_string = format!("total memo:{} ,i_farthest:{}",
+                                       self.total_memo,self.i_farthest);
         let control_message = format!("(L)earn:(T)est:(O)pen log:(A)uto:(Q)uit");
 
         'main: loop{
@@ -428,8 +429,8 @@ impl MemoManager {
                         test_result_message.push_str("reach end!");
                         reach_end = true;
                         write_log(&tr_incorrect,self.i_start,self.i_end);
-                        if self.farthest_index < self.i_end {
-                            self.farthest_index = self.i_end;
+                        if self.i_farthest < self.i_end {
+                            self.i_farthest = self.i_end;
                         }
                     }
                 }
@@ -461,8 +462,10 @@ impl MemoManager {
             for c in stdin.keys() {
                 match c.unwrap() {
                     Key::Char('b') => {
-                        self.display_mode = DisplayMode::ShowAll;
-                        break 'outter;
+                        if self.confirm_keyinput() {
+                            self.display_mode = DisplayMode::ShowAll;
+                            break 'outter;
+                        }
                     },
                     Key::Char('\n')=> { // enter key
                         can_answer = true;
@@ -526,7 +529,7 @@ impl MemoManager {
             let head_message = format!("Available range : {}-{}",0,self.total_memo - 1);
 
             let _result = write!(stdout,"{}\n\r",head_message).unwrap();
-            let _result = write!(stdout,"{}\n\r",format!("farthest index({})",self.farthest_index)).unwrap();
+            let _result = write!(stdout,"{}\n\r",format!("farthest index({})",self.i_farthest)).unwrap();
             let _result = write!(stdout,"{}\n\r",format!("set index({},{})",self.i_start,self.i_end)).unwrap();
             if !set_range {write!(stdout,"{}\n\r",end_message).unwrap();}
             stdout.flush().unwrap();
@@ -549,12 +552,12 @@ impl MemoManager {
             }
             for c in stdin().keys() {
                 match c.unwrap() {
-                    Key::Char('b') => { break 'outter; },
-                    Key::Char('s') => { set_range = true; break; },
-                    Key::Char('r') => {
+                    Key::Char('b') => { break 'outter; }, // 'b'ack
+                    Key::Char('s') => { set_range = true; break; }, //'s'et range
+                    Key::Char('r') => { // 'r'recommand range
                         match self.page {
                             Page::Learn => {
-                                self.i_start = self.farthest_index + 1;
+                                self.i_start = if self.i_farthest > 0 {self.i_farthest + 1} else {0};
                                 self.i_current = self.i_start;
                                 self.i_end = if self.i_start + 9 > self.total_memo - 1{
                                     self.total_memo - 1
@@ -563,10 +566,10 @@ impl MemoManager {
                                 };
                             },
                             Page::Test => {
-                                self.i_start = if self.farthest_index - 29 > 0 {
-                                    self.farthest_index - 29
+                                self.i_start = if self.i_farthest as i32 - 29 > 0 {
+                                    self.i_farthest - 29
                                 }else { 0 };
-                                self.i_end = self.farthest_index;
+                                self.i_end = self.i_farthest;
                             },
                             _ => {}
                         }
@@ -638,6 +641,7 @@ impl MemoManager {
         };
         format!("{}:{}-({}:{})",current_page,self.file_name,self.i_start,self.i_end)
     }
+
     fn set_indexs(&mut self,input:String) -> bool{ // set indice by input start, end
         let v_inputs:Vec<_> = input.trim().split(',').collect();
         self.i_start = match v_inputs[0].parse::<usize>(){
@@ -748,8 +752,20 @@ impl MemoManager {
             _ => {},
         }
     }
+    fn confirm_keyinput(&self) -> bool{
+        let mut stdin = stdin();
+        let mut stdout = stdout().into_raw_mode().unwrap();
+        write!(stdout,"Are you sure? yes/no");
+        stdout.flush().unwrap();
+        let _ = stdout.suspend_raw_mode().unwrap();
+        let input = TermRead::read_line(&mut stdin).unwrap().unwrap();
+        let _ = stdout.activate_raw_mode().unwrap();
 
+        input.contains("y")
+
+    }
 }
+
 fn read_log_indexed(line_index:&str,path:&str) -> Result<Vec<(usize,Vec<String>)>,String> {
     let log_all = match fs::read_to_string(path) {
         Ok(val) => val,
@@ -799,7 +815,7 @@ fn read_log_indexed(line_index:&str,path:&str) -> Result<Vec<(usize,Vec<String>)
     //Ok(vec![(1,vec!["test".to_string(),"test2".to_string()])]) //dumy
     Ok(result)
 }
-fn read_farthest_index(file_path:&str) -> usize{
+fn read_i_farthest(file_path:&str) -> usize{
     let contents = match fs::read_to_string(file_path){
         Ok(val) => val,
         Err(_e) => return 0, // file read err
@@ -808,18 +824,18 @@ fn read_farthest_index(file_path:&str) -> usize{
     let mut v_lines = contents.split('\n').collect::<Vec<&str>>();
     let _ = v_lines.pop();
 
-    let mut farthest_index = 0;
+    let mut i_farthest = 0;
     for line in v_lines {
         let range = line.split("range").collect::<Vec<&str>>()[1]
             .split(' ').collect::<Vec<&str>>()[0]
             .trim_start_matches("(").trim_end_matches(")")
             .split(',').collect::<Vec<&str>>();
         let index = range[1].parse::<usize>().unwrap();
-        if farthest_index < index {
-            farthest_index = index;
+        if i_farthest < index {
+            i_farthest = index;
         }
     }
-    farthest_index
+    i_farthest
 }
 fn write_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize) {
     let fd = File::options().create(true).append(true).open("data.log");
@@ -846,9 +862,11 @@ fn write_log(tr_incorrect:&HashMap<usize,Vec<String>> ,i_start:usize,i_end:usize
         contents_for_log.push_str(&element);
     }
     contents_for_log.push('\n');
-    let _result = write!(fd.expect("file read error"),"{}",contents_for_log).unwrap();
+    let _result = write!(fd.expect("file write error"),"{}",contents_for_log).unwrap();
 }
-fn write_test_result(tr_incorrect:&mut HashMap<usize,Vec<String>>,input_string:&mut String,i_current:usize){
+fn write_test_result(tr_incorrect:&mut HashMap<usize,Vec<String>>,
+                     input_string:&mut String,i_current:usize)
+{
     input_string.push(',');//add delimiter
     tr_incorrect.entry(i_current). //  current index as key
     or_insert(Vec::new()).    // &mut return
